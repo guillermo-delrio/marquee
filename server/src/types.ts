@@ -70,6 +70,8 @@ export interface QlooEnvelope {
 
 export type AgentEvent =
   | { type: "status"; message: string }
+  /** First event of a live run: the id the page sends to /api/cancel when its visitor leaves. */
+  | { type: "run"; id: string }
   | { type: "tool_call"; call_id: string; name: string; args: Record<string, unknown> }
   | {
       type: "tool_result";

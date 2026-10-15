@@ -56,6 +56,13 @@ export default function App() {
     showResults();
   };
 
+  // Leaving the page stops a running plan (the abort sends /api/cancel), so nobody pays for a page nobody reads.
+  useEffect(() => {
+    const leave = () => abort.current?.abort();
+    window.addEventListener("pagehide", leave);
+    return () => window.removeEventListener("pagehide", leave);
+  }, []);
+
   useEffect(() => {
     fetchSamples()
       .then((list) => {

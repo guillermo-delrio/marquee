@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -153,8 +153,32 @@ export function createLimiter(max: number) {
   return Object.assign(run, { waiting: () => queue.length });
 }
 
+/**
+ * Live runs by id, so a page can stop its own run. Hosting proxies (Cloud Run's front end) keep the request open
+ * after the visitor leaves, so a closed connection alone cannot be relied on; the page sends /api/cancel instead.
+ */
+export function createRuns() {
+  const runs = new Map<string, AbortController>();
+  return {
+    start(controller: AbortController) {
+      const id = randomUUID();
+      runs.set(id, controller);
+      return id;
+    },
+    finish: (id: string) => void runs.delete(id),
+    cancel(id: string) {
+      const c = runs.get(id);
+      if (!c) return false;
+      runs.delete(id);
+      c.abort();
+      return true;
+    },
+  };
+}
+
 export function createApp() {
   const limit = createLimiter(CONCURRENT_RUNS);
+  const runs = createRuns();
   const budget = createBudget({ daily: DAILY_RUN_CAP, perClient: RUNS_PER_CLIENT, file: path.join(OUT, "budget.json") });
   const app = express();
   app.disable("x-powered-by");
@@ -202,17 +226,31 @@ export function createApp() {
       send({ type: "error", message: refused });
       return res.end();
     }
-    // A visitor who leaves stops the run: no more model turns are paid for a page nobody is reading.
+    // A visitor who leaves stops the run: no more model turns are paid for a page nobody is reading. Locally the
+    // closed connection says so; behind a proxy, the page's /api/cancel does.
     const abort = new AbortController();
-    res.on("close", () => { if (!res.writableFinished) abort.abort(); });
+    const runId = runs.start(abort);
+    send({ type: "run", id: runId });
+    res.on("close", () => {
+      if (res.writableFinished) return;
+      console.log("Visitor left: stopping their run");
+      abort.abort();
+    });
     const heartbeat = setInterval(() => res.write(": ping\n\n"), HEARTBEAT_MS);
     try {
       await limit(() => (abort.signal.aborted ? Promise.resolve() : planAndCache(venue, send, abort.signal)),
         () => send({ type: "status", message: "Another plan is running; yours starts as soon as it finishes." }));
     } finally {
+      runs.finish(runId);
       clearInterval(heartbeat);
       res.end();
     }
+  });
+
+  app.post("/api/cancel", (req, res) => {
+    const id = typeof req.body?.id === "string" ? req.body.id : "";
+    if (runs.cancel(id)) console.log("Visitor cancelled: stopping their run");
+    res.status(204).end();
   });
 
   if (fs.existsSync(WEB)) app.use(express.static(WEB));

@@ -45,6 +45,7 @@ export interface Programme {
 
 export type AgentEvent =
   | { type: "status"; message: string }
+  | { type: "run"; id: string }
   | { type: "tool_call"; call_id: string; name: string; args: Record<string, unknown> }
   | { type: "tool_result"; call_id: string; name: string; status: string; summary: string; result_count?: number; warnings?: string[]; raw: unknown }
   | { type: "programme"; programme: Programme }

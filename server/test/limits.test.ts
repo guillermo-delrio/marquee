@@ -5,7 +5,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { withRetry } from "../src/qloo.js";
-import { createBudget, createLimiter, warmSamples } from "../src/server.js";
+import { createBudget, createLimiter, createRuns, warmSamples } from "../src/server.js";
 import type { QlooEnvelope } from "../src/types.js";
 
 const limited: QlooEnvelope = { status: "error", summary: "429", error: { code: "QLOO_RATE_LIMIT", layer: "qloo", retryable: true, recovery: "Wait" } };
@@ -84,5 +84,22 @@ describe("createLimiter queue", () => {
     release();
     await Promise.all([first, second]);
     expect(limit.waiting()).toBe(0);
+  });
+});
+
+describe("createRuns", () => {
+  it("cancels a registered run by its id, once, and forgets finished ones", () => {
+    const runs = createRuns();
+    const a = new AbortController();
+    const id = runs.start(a);
+    expect(id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(runs.cancel("not-an-id")).toBe(false);
+    expect(runs.cancel(id)).toBe(true);
+    expect(a.signal.aborted).toBe(true);
+    const b = new AbortController();
+    const id2 = runs.start(b);
+    runs.finish(id2);
+    expect(runs.cancel(id2)).toBe(false);
+    expect(b.signal.aborted).toBe(false);
   });
 });
