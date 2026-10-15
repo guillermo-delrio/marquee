@@ -2,9 +2,13 @@ import type { Programme } from "./types.js";
 
 const DAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
 
+/** Qloo stores some names HTML-escaped ("Writers &amp; Lovers"); show and compare them decoded. */
+export const decodeEntities = (s: string) =>
+  s.replace(/&(amp|quot|#39|apos|lt|gt);/g, (_, e: string) => ({ amp: "&", quot: '"', "#39": "'", apos: "'", lt: "<", gt: ">" })[e] ?? _);
+
 /** Names compare without case, curly quotes or dash variants: Qloo writes "Emma‐Jean" with U+2010. */
 export const normalName = (s: string) =>
-  s.normalize("NFKC").toLowerCase().replace(/[‐-―]/g, "-").replace(/[‘’]/g, "'").replace(/\s+/g, " ").trim();
+  decodeEntities(s).normalize("NFKC").toLowerCase().replace(/[‐-―]/g, "-").replace(/[‘’]/g, "'").replace(/\s+/g, " ").trim();
 
 /** Every entity name a Qloo envelope mentions: results, trend series, interpretations and resolution candidates. */
 export function namesIn(value: unknown, into = new Set<string>()): Set<string> {
@@ -42,6 +46,9 @@ export function checkProgramme(
     }
   }
   if (p.events.length !== known.slots) problems.push(`The programme must have exactly ${known.slots} events, not ${p.events.length}.`);
+  for (const partner of p.partners ?? []) {
+    if (!names.has(normalName(partner.name))) problems.push(`Partner "${partner.name}" does not appear in any Qloo result; suggest only places Qloo returned.`);
+  }
   p.events.forEach((e, i) => {
     const at = `Event ${i + 1} ("${e.title}")`;
     for (const f of e.featured) if (!names.has(normalName(f))) problems.push(`${at}: "${f}" does not appear in any Qloo result; feature only returned titles, named as returned.`);

@@ -1,3 +1,4 @@
+import type { ComparisonRow } from "./baseline.js";
 export const VENUE_KINDS = ["cinema", "bookshop", "music_bar"] as const;
 export type VenueKind = (typeof VENUE_KINDS)[number];
 
@@ -52,6 +53,17 @@ export interface Programme {
   next_checks: string[];
   /** One verdict per shortlisted title, when the venue gave a shortlist. */
   shortlist_notes?: ShortlistNote[];
+  /** Local places to co-promote with; absent in runs saved before it existed. */
+  partners?: Partner[];
+  /** What Qloo's audience profiles say about the lead picks, against the venue's audience. */
+  audience_check?: string;
+}
+/** A local place whose audience shares the venue's taste, suggested for co-promotion. */
+export interface Partner {
+  name: string;
+  kind: string;
+  idea: string;
+  evidence: string[];
 }
 
 /** The result envelope every qloo mcp tool returns (result_schema_version 1.0-preview.1). */
@@ -84,5 +96,9 @@ export type AgentEvent =
       raw: QlooEnvelope;
     }
   | { type: "programme"; programme: Programme }
+  /** The same month planned by the same model without Qloo, for comparison. */
+  | { type: "baseline"; programme: Programme }
+  /** Both plans' picks in one Qloo taste ranking (call `rank_call`). */
+  | { type: "comparison"; rank_call: string; rows: ComparisonRow[] }
   | { type: "error"; message: string }
   | { type: "done"; tool_calls: number; input_tokens: number; cached_tokens?: number; output_tokens: number; cost_usd: number; mock: boolean };

@@ -22,6 +22,10 @@ export interface Comparison {
   rows: ComparisonRow[];
 }
 
+/** Qloo stores some names HTML-escaped ("Writers &amp; Lovers"); show and compare them decoded. */
+const decodeEntities = (s: string) =>
+  s.replace(/&(amp|quot|#39|apos|lt|gt);/g, (_, e: string) => ({ amp: "&", quot: '"', "#39": "'", apos: "'", lt: "<", gt: ">" })[e] ?? _);
+
 const norm = (s: string) => s.normalize("NFKC").toLowerCase().replace(/[‐-―]/g, "-").replace(/\s+/g, " ").trim();
 const itemsOf = (raw: unknown): Item[] => {
   const r = (raw as { results?: unknown } | null)?.results;
@@ -29,7 +33,7 @@ const itemsOf = (raw: unknown): Item[] => {
 };
 const optionsOf = (raw: unknown): { id: string; name: string }[] => {
   const o = (raw as { interpretation?: { options?: { entityId?: string; name?: string }[] } } | null)?.interpretation?.options;
-  return (o ?? []).filter((x) => x.entityId).map((x) => ({ id: x.entityId!, name: x.name ?? x.entityId! }));
+  return (o ?? []).filter((x) => x.entityId).map((x) => ({ id: x.entityId!, name: decodeEntities(x.name ?? x.entityId!) }));
 };
 
 /**
@@ -83,5 +87,5 @@ export interface ScoreRow {
 /** The named, scored results of a recommend or rank call, in Qloo's order. */
 export function scoreRows(raw: unknown): ScoreRow[] {
   const rows = itemsOf(raw).filter((i): i is Required<Pick<Item, "name" | "affinity">> & Item => typeof i.name === "string" && typeof i.affinity === "number");
-  return rows.map((r, i) => ({ name: r.name, score: r.affinity, tied: i > 0 && Math.abs(rows[i - 1].affinity - r.affinity) < 0.01 }));
+  return rows.map((r, i) => ({ name: decodeEntities(r.name), score: r.affinity, tied: i > 0 && Math.abs(rows[i - 1].affinity - r.affinity) < 0.01 }));
 }

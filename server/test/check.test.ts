@@ -61,3 +61,13 @@ describe("shortlist checks", () => {
     expect(problems).toMatch(/marked as from the shortlist but features none of it/);
   });
 });
+
+describe("partner checks", () => {
+  it("accepts partners Qloo returned and names the ones it did not", () => {
+    const p = { ...programme([event(), event({ featured: ["Columbus"], date: "2026-11-07", when: "Week 1, Saturday evening" })]),
+      partners: [{ name: "Café de la Luz", kind: "cafe", idea: "Coffee for ticket holders", evidence: ["q1"] },
+        { name: "Made Up Bar", kind: "bar", idea: "", evidence: ["q1"] }] };
+    const problems = checkProgramme(p, { ...known, names: new Set([...known.names, "Café de la Luz"]) });
+    expect(problems).toEqual([expect.stringMatching(/Partner "Made Up Bar" does not appear in any Qloo result/)]);
+  });
+});

@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 
-import { checkProgramme, namesIn } from "./check.js";
+import { baseTitle, pickTitles, runBaseline, type ComparisonRow } from "./baseline.js";
+import { checkProgramme, namesIn, normalName } from "./check.js";
 import { forModel, resultsOf, summarise } from "./compact.js";
 import type { QlooClient } from "./qloo.js";
 import type { AgentEvent, Programme, QlooEnvelope, VenueInput } from "./types.js";
@@ -8,7 +9,7 @@ import type { AgentEvent, Programme, QlooEnvelope, VenueInput } from "./types.js
 export const MODEL = process.env.MARQUEE_MODEL ?? "claude-sonnet-5-5";
 // List prices per million tokens for the default model (input, output, cache read, cache write).
 const PRICE = { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5 };
-const MAX_TOOL_CALLS = 16;
+const MAX_TOOL_CALLS = 18;
 const MAX_TURNS = 12;
 // A run normally costs about $0.10. Past SOFT_COST the agent is told to submit; past HARD_COST the run stops.
 const SOFT_COST_USD = 0.3;
@@ -23,7 +24,7 @@ const TARGET: Record<VenueInput["kind"], { type: string; noun: string; formats: 
 
 const PROGRAMME_SCHEMA = {
   type: "object",
-  required: ["headline", "audience_read", "events", "limits", "next_checks"],
+  required: ["headline", "audience_read", "events", "limits", "next_checks", "partners", "audience_check"],
   properties: {
     headline: { type: "string", description: "One sentence: the month's programming idea." },
     audience_read: { type: "string", description: "What the Qloo results say about this location's taste, with call ids." },
@@ -58,6 +59,24 @@ const PROGRAMME_SCHEMA = {
     },
     limits: { type: "array", items: { type: "string" }, description: "What these results do not establish." },
     next_checks: { type: "array", items: { type: "string" }, description: "Cheap checks the venue can run before committing." },
+    partners: {
+      type: "array",
+      description: "2-3 local places whose audiences share the venue's taste, from the co-promotion call, each with one concrete idea. Empty only if Qloo returned none worth suggesting (say so in limits).",
+      items: {
+        type: "object",
+        required: ["name", "kind", "idea", "evidence"],
+        properties: {
+          name: { type: "string", description: "Exactly as Qloo returned it." },
+          kind: { type: "string", description: "bar, cafe, bookshop, restaurant or other." },
+          idea: { type: "string", description: "One concrete co-promotion, tied to a named event where it fits." },
+          evidence: { type: "array", items: { type: "string" }, description: "Call ids." },
+        },
+      },
+    },
+    audience_check: {
+      type: "string",
+      description: "What qloo_audience_demographics shows for the lead picks, against the venue's stated audience, with call ids.",
+    },
     shortlist_notes: {
       type: "array",
       description: "Only when the venue gave a shortlist: one verdict per shortlisted title, in the venue's order.",
@@ -97,6 +116,8 @@ If the venue gives a shortlist (titles it can actually book this month), it is t
   Build the programme mainly from shortlisted titles that fit; taste-discovery picks may fill remaining slots as source "taste", noted as not on the shortlist so availability needs checking. Give every shortlisted title a verdict in shortlist_notes: programmed, reserve (fits but no slot), skip (poor fit, say why), or not_found (Qloo could not resolve it). A shortlisted title missing from a ranking has no data there; that is not evidence against it.
 5. Optional, for at most two broader-appeal slots (a family matinee, a crowd night): qloo_recommend with signal_location and no taste signals, labelled in the programme as local crowd-pleasers rather than picks for this audience.
 6. Optional: ${t.trends ? `qloo_trends for the top 3-5 over the six months to ${new Date().toISOString().slice(0, 10)} (today; shorter windows return no points), and ` : ""}qloo_where_popular for the lead pick within the venue's city. In where_popular, an affinity of 0 means no measurable local signal.
+7. Co-promotion partners: qloo_recommend with target_type "place", signals = the resolved hits, filter_location = the venue's city, include_tags = one place-category tag id that suits a pairing (for example "urn:tag:category:place:bar" or "urn:tag:category:place:cafe"), limit 10. Choose 2-3 places that look independent and fit specific events (skip chains, hotels and institutional cafeterias), each with one concrete idea such as a ticket-stub offer or a joint night. They are places to approach, not endorsements.
+8. Audience check: qloo_audience_demographics (entity_type "${t.type}") for the two lead picks. Its values are skews against the general population (positive means over-represented). Say whether the picks' audiences match the venue's audience, if one was given, or who they lean towards if not.
 Use at most ${MAX_TOOL_CALLS} tool calls. Do any check worth doing now rather than recommending it to the venue. Then call submit_programme exactly once.
 
 Programme rules:
@@ -131,6 +152,7 @@ export async function runAgent(
   emit: (e: AgentEvent) => void,
   anthropic: Anthropic = new Anthropic(),
   signal?: AbortSignal,
+  options: { compare?: boolean } = {},
 ): Promise<Programme | null> {
   const qlooTools = await qloo.tools();
   const tools: Anthropic.Tool[] = [
@@ -153,7 +175,37 @@ export async function runAgent(
   // What the programme may feature and cite: names Qloo returned (never resolution alternatives) and real call ids.
   const names = new Set<string>();
   const callIds = new Set<string>();
+  // Entity ids by name, and the signals of the taste-only discovery call, for the comparison without Qloo.
+  const ids = new Map<string, string>();
+  let tasteSignals: unknown[] | null = null;
   let submissions = 0;
+
+  /** One numbered Qloo call: shown in the trail, remembered for the programme checks, returned as its envelope. */
+  const callQloo = async (name: string, args: Record<string, unknown>): Promise<{ callId: string; envelope: QlooEnvelope }> => {
+    const callId = `q${++toolCalls}`;
+    emit({ type: "tool_call", call_id: callId, name, args });
+    let envelope: QlooEnvelope;
+    try {
+      envelope = await qloo.call(name, args);
+    } catch (err) {
+      envelope = { status: "error", summary: `Tool failed: ${(err as Error).message}` };
+    }
+    callIds.add(callId);
+    namesIn([envelope.interpretation, envelope.results, envelope.series], names);
+    idsIn([envelope.interpretation, envelope.results], ids);
+    if (name === "qloo_recommend" && !args.signal_location && Array.isArray(args.signals) && envelope.status === "ok") tasteSignals = args.signals;
+    emit({
+      type: "tool_result",
+      call_id: callId,
+      name,
+      status: envelope.status,
+      summary: summarise(envelope),
+      result_count: envelope.status === "ok" ? resultsOf(envelope).length : undefined,
+      warnings: envelope.warnings,
+      raw: envelope,
+    });
+    return { callId, envelope };
+  };
 
   emit({ type: "status", message: qloo.mock ? "Running on mock Qloo data" : "Connected to Qloo" });
   for (let turn = 0; turn < MAX_TURNS && !programme; turn++) {
@@ -213,27 +265,8 @@ export async function runAgent(
         results.push({ type: "tool_result", tool_use_id: use.id, is_error: true, content: "Tool budget spent: call submit_programme now." });
         continue;
       }
-      const callId = `q${++toolCalls}`;
       const args = (use.input ?? {}) as Record<string, unknown>;
-      emit({ type: "tool_call", call_id: callId, name: use.name, args });
-      let envelope: QlooEnvelope;
-      try {
-        envelope = await qloo.call(use.name, args);
-      } catch (err) {
-        envelope = { status: "error", summary: `Tool failed: ${(err as Error).message}` };
-      }
-      callIds.add(callId);
-      namesIn([envelope.interpretation, envelope.results, envelope.series], names);
-      emit({
-        type: "tool_result",
-        call_id: callId,
-        name: use.name,
-        status: envelope.status,
-        summary: summarise(envelope),
-        result_count: envelope.status === "ok" ? resultsOf(envelope).length : undefined,
-        warnings: envelope.warnings,
-        raw: envelope,
-      });
+      const { callId, envelope } = await callQloo(use.name, args);
       results.push({
         type: "tool_result",
         tool_use_id: use.id,
@@ -244,6 +277,72 @@ export async function runAgent(
     messages.push({ role: "user", content: results });
   }
   if (!programme && !stopped) emit({ type: "error", message: "The agent did not finish a programme within its turn budget." });
+  if (programme && options.compare !== false && !signal?.aborted) {
+    try {
+      emit({ type: "status", message: "Planning the same month without Qloo, for comparison" });
+      const b = await runBaseline(venue, userPrompt(venue), anthropic, MODEL, PRICE, signal);
+      cost += b.cost;
+      inputTokens += b.inputTokens;
+      outputTokens += b.outputTokens;
+      if (b.programme) {
+        emit({ type: "baseline", programme: b.programme });
+        if (tasteSignals && !signal?.aborted) await compareByTaste(programme, b.programme);
+      }
+    } catch (err) {
+      if (!signal?.aborted) console.error("Comparison without Qloo failed:", err);
+    }
+  }
   emit({ type: "done", tool_calls: toolCalls, input_tokens: inputTokens, cached_tokens: cachedTokens, output_tokens: outputTokens, cost_usd: Number(cost.toFixed(4)), mock: qloo.mock });
   return programme;
+
+  /**
+   * Both plans' picks (up to five each, recent hits left out) in one Qloo ranking by this audience's taste: positions
+   * within a single call, so the two plans are measured on the same scale. Titles Qloo cannot find say so.
+   */
+  async function compareByTaste(ours: Programme, theirs: Programme) {
+    const hits = new Set(venue.recentHits.map(baseTitle));
+    const isHit = (f: string) => hits.has(baseTitle(f));
+    const mine = pickTitles(ours, 5, isHit);
+    const other = pickTitles(theirs, 5, isHit);
+    const titles = new Map<string, ComparisonRow["source"]>();
+    for (const t of mine) titles.set(baseTitle(t), "marquee");
+    for (const t of other) titles.set(baseTitle(t), titles.has(baseTitle(t)) ? "both" : "baseline");
+    const display = new Map([...other, ...mine].map((t) => [baseTitle(t), t]));
+    const known = new Map([...ids].map(([name, id]) => [baseTitle(name), id]));
+    const idOf = new Map<string, string | null>();
+    for (const key of titles.keys()) {
+      let id = known.get(key) ?? null;
+      if (!id) {
+        // Qloo's search is fuzzy: a placeholder such as "Local authors (to be confirmed)" comes back as some real title,
+        // so a result counts only when its name matches.
+        const { envelope } = await callQloo("qloo_describe", { entity: display.get(key), type: TARGET[venue.kind].type });
+        const results = (Array.isArray(envelope.results) ? envelope.results : []) as { entity_id?: string; name?: string }[];
+        const candidates = (envelope.resolution as { issues?: { candidates?: { id?: string; name?: string }[] }[] } | undefined)?.issues?.[0]?.candidates ?? [];
+        const match = [...results.map((r) => ({ id: r.entity_id, name: r.name })), ...candidates].find((c) => c.id && c.name && baseTitle(c.name) === key);
+        id = match?.id ?? null;
+      }
+      idOf.set(key, id);
+    }
+    const options = [...new Set([...idOf.values()].filter((x): x is string => !!x))].slice(0, 10);
+    if (options.length < 2) return;
+    const { callId, envelope } = await callQloo("qloo_rank", { options, option_type: TARGET[venue.kind].type, signals: tasteSignals });
+    const order = (Array.isArray(envelope.results) ? envelope.results : []).map((r) => (r as { entity_id?: string }).entity_id);
+    const rows: ComparisonRow[] = [...titles].map(([key, source]) => {
+      const id = idOf.get(key) ?? null;
+      const at = id ? order.indexOf(id) : -1;
+      return { name: display.get(key) ?? key, source, position: at < 0 ? null : at + 1, found: id !== null };
+    }).sort((a, b) => (a.position ?? 99) - (b.position ?? 99));
+    emit({ type: "comparison", rank_call: callId, rows });
+  }
+}
+
+/** Entity ids by normalised name, from results (entity_id) and interpretations (entityId). */
+function idsIn(value: unknown, into: Map<string, string>) {
+  if (Array.isArray(value)) value.forEach((v) => idsIn(v, into));
+  else if (value && typeof value === "object") {
+    const o = value as Record<string, unknown>;
+    const id = o.entity_id ?? o.entityId;
+    if (typeof id === "string" && typeof o.name === "string" && !into.has(normalName(o.name))) into.set(normalName(o.name), id);
+    Object.values(o).forEach((v) => idsIn(v, into));
+  }
 }

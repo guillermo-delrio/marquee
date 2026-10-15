@@ -96,3 +96,13 @@ describe("summarise", () => {
     expect(summarise({ status: "ok", results: [film(1)] })).toBe("1 result: Film 1");
   });
 });
+
+describe("escaped names", () => {
+  it("decodes Qloo's HTML-escaped names for the model, the summary and the checks", async () => {
+    const { normalName } = await import("../src/check.js");
+    const env = { status: "ok" as const, results: [{ name: "Writers &amp; Lovers", entity_id: "W" }] };
+    expect(summarise(env)).toBe("1 result: Writers & Lovers");
+    expect((forModel(env).results as { name: string }[])[0].name).toBe("Writers & Lovers");
+    expect(normalName("Writers &amp; Lovers")).toBe(normalName("Writers & Lovers"));
+  });
+});

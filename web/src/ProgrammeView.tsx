@@ -4,6 +4,7 @@ import { dateFor, toIcs, toMarkdown } from "./calendar";
 import { Cite } from "./Cite";
 import { comparisons } from "./evidence";
 import { TasteVsPlace } from "./TasteVsPlace";
+import { WithoutQloo } from "./WithoutQloo";
 import type { AgentEvent, Programme, ProgrammeEvent, ShortlistNote, VenueInput } from "./types";
 
 const SOURCE: Record<NonNullable<ProgrammeEvent["source"]>, string> = {
@@ -25,6 +26,8 @@ const fmt = new Intl.DateTimeFormat(undefined, { weekday: "short", day: "numeric
 
 export function ProgrammeView({ programme, venue, events }: { programme: Programme; venue: VenueInput; events: AgentEvent[] }) {
   const evidence = comparisons(events, { featured: programme.events.flatMap((e) => e.featured) });
+  const baseline = events.find((e): e is Extract<AgentEvent, { type: "baseline" }> => e.type === "baseline")?.programme;
+  const comparison = events.find((e): e is Extract<AgentEvent, { type: "comparison" }> => e.type === "comparison");
   const [copied, setCopied] = useState(false);
   const md = () => toMarkdown(programme, venue.month, venue.location);
   // Cards in calendar order, whatever order the agent wrote them in.
@@ -82,6 +85,30 @@ export function ProgrammeView({ programme, venue, events }: { programme: Program
           </li>
         ))}
       </ol>
+      {baseline && comparison && <WithoutQloo ours={programme} theirs={baseline} rows={comparison.rows} rankCall={comparison.rank_call}
+        noun={venue.kind === "cinema" ? "films" : venue.kind === "bookshop" ? "books" : "artists"} />}
+      {(programme.partners?.length || programme.audience_check) ? (
+        <div className="two">
+          {programme.partners?.length ? (
+            <section className="panel">
+              <h3>Co-promote with</h3>
+              <p className="viz-sub">Local places whose audiences share your regulars' taste, from Qloo's place data.</p>
+              <ul className="partners">
+                {programme.partners.map((p) => (
+                  <li key={p.name}><strong>{p.name}</strong> <span className="muted">{p.kind}</span><br /><Cite text={p.idea} />{p.evidence.length ? <> (<Cite text={p.evidence.join(", ")} />)</> : null}</li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+          {programme.audience_check ? (
+            <section className="panel">
+              <h3>Audience check</h3>
+              <p className="viz-sub">Who the lead picks' audiences lean towards, from Qloo's audience profiles.</p>
+              <p><Cite text={programme.audience_check} /></p>
+            </section>
+          ) : null}
+        </div>
+      ) : null}
       {evidence.map((c) => <TasteVsPlace key={c.localCall} c={c} />)}
       <div className="two">
         <section className="panel">

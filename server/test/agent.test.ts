@@ -72,7 +72,7 @@ describe("runAgent", () => {
     await runAgent(venue, fakeQloo, () => {}, fakeAnthropic([
       [use("t1", "qloo_rank", { options: ["Paterson"], option_type: "movie" })],
       [use("t2", "submit_programme", programme)],
-    ], requests));
+    ], requests), undefined, { compare: false });
     expect(requests).toHaveLength(2);
     for (const r of requests) {
       expect(r.cache_control).toEqual({ type: "ephemeral" }); // automatic breakpoint on the newest block
@@ -204,5 +204,53 @@ describe("validate shortlist", () => {
     await runAgent({ ...venue, shortlist: ["Paterson", "Old Joy"] }, fakeQloo, () => {}, fakeAnthropic([[use("t1", "submit_programme", programme)]], requests));
     expect(JSON.stringify(requests[0].messages)).toMatch(/titles the venue can book: Paterson; Old Joy/);
     expect((requests[0].system as { text: string }[])[0].text).toMatch(/shortlist/);
+  });
+});
+
+describe("comparison without Qloo", () => {
+  it("plans without tools, then ranks both plans' picks in one Qloo call", async () => {
+    // A Qloo stand-in: describe finds every title, recommend returns Paterson, rank puts the options in reverse order.
+    const calls: { name: string; args: Record<string, unknown> }[] = [];
+    const qloo: QlooClient = {
+      mock: true,
+      tools: async () => [],
+      close: async () => {},
+      call: async (name, args) => {
+        calls.push({ name, args });
+        // Fuzzy search: a placeholder comes back as some other title, which must not count as found.
+        if (name === "qloo_describe") return { status: "ok", results: [{ entity_id: `ID-${args.entity}`, name: String(args.entity).startsWith("Local") ? "Localism" : args.entity }] };
+        if (name === "qloo_recommend") return { status: "ok", results: [{ entity_id: "ID-Paterson", name: "Paterson" }] };
+        if (name === "qloo_rank") return { status: "ok", results: [...(args.options as string[])].reverse().map((id) => ({ entity_id: id, name: id })) };
+        return { status: "ok", results: [] };
+      },
+    };
+    const theirs = { ...programme, events: [{ ...programme.events[0], featured: ["Columbus by Kogonada", "Past Lives by Celine Song", "Local films (to be confirmed)"] }] };
+    const events: AgentEvent[] = [];
+    const requests: Record<string, unknown>[] = [];
+    await runAgent(venue, qloo, (e) => events.push(e), fakeAnthropic([
+      [use("t1", "qloo_recommend", { target_type: "movie", signals: ["ID-Past Lives"] })],
+      [use("t2", "submit_programme", programme)],
+      [use("t3", "submit_programme", theirs)],
+    ], requests));
+    expect(requests[2].tools).toHaveLength(1); // the baseline has no Qloo tools
+    expect(events.find((e) => e.type === "baseline")).toMatchObject({ programme: { events: [{ featured: theirs.events[0].featured }] } });
+    const rank = calls.find((c) => c.name === "qloo_rank");
+    expect(rank?.args).toMatchObject({ options: ["ID-Paterson", "ID-Columbus by Kogonada"], signals: ["ID-Past Lives"] });
+    expect(rank?.args).not.toHaveProperty("signal_location");
+    // The recent hit is left out, the author suffix does not stop a match, and the placeholder is not found.
+    expect(events.find((e) => e.type === "comparison")).toMatchObject({ rows: [
+      { name: "Columbus by Kogonada", source: "baseline", position: 1, found: true },
+      { name: "Paterson", source: "marquee", position: 2, found: true },
+      { name: "Local films (to be confirmed)", source: "baseline", position: null, found: false },
+    ] });
+  });
+});
+
+describe("baseTitle", () => {
+  it("compares titles without authors, notes or case", async () => {
+    const { baseTitle } = await import("../src/baseline.js");
+    expect(baseTitle("Piranesi by Susanna Clarke")).toBe(baseTitle("Piranesi"));
+    expect(baseTitle("Klara and the Sun (Ishiguro)")).toBe(baseTitle("klara and the sun"));
+    expect(baseTitle("Debut novelists (to be confirmed)")).not.toBe(baseTitle("The Debut"));
   });
 });

@@ -193,3 +193,17 @@ footer { margin-top: 32px; color: var(--ink-3); font-size: 0.8rem; max-width: 76
 .bar-value { text-align: right; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .bar-value abbr { text-decoration: none; }
 details.raw { margin-top: 6px; }
+
+/* With and without Qloo */
+.compare { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 2px; }
+.compare li { display: grid; grid-template-columns: 2.5rem minmax(0, 1fr) auto; gap: 10px; align-items: baseline; padding: 4px 0; border-top: 1px solid var(--line); }
+.compare li .muted { grid-column: 2 / -1; font-size: 0.8rem; }
+.compare .pos { font-variant-numeric: tabular-nums; color: var(--ink-2); font-weight: 600; }
+.compare li.marquee .name, .compare li.both .name { font-weight: 600; }
+.tag.marquee, .tag.both { border-color: var(--viz-taste); color: var(--viz-taste); }
+.muted { color: var(--ink-3); }
+.verdict-table { border-collapse: collapse; width: 100%; table-layout: fixed; font-size: 0.85rem; margin-top: 6px; }
+.verdict-table th, .verdict-table td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.verdict-table tr.differs td { background: var(--accent-soft); }
+ul.plain { margin: 6px 0; padding-left: 18px; font-size: 0.9rem; }
+.partners { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; font-size: 0.92rem; }

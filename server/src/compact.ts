@@ -1,3 +1,4 @@
+import { decodeEntities } from "./check.js";
 import type { QlooEnvelope } from "./types.js";
 
 /**
@@ -13,7 +14,10 @@ const MAX_TEXT = 220;
 
 function trim(value: unknown): unknown {
   if (typeof value === "number") return Number.isInteger(value) ? value : Number(value.toFixed(3));
-  if (typeof value === "string") return value.length > MAX_TEXT ? `${value.slice(0, MAX_TEXT)}…` : value;
+  if (typeof value === "string") {
+    const s = decodeEntities(value);
+    return s.length > MAX_TEXT ? `${s.slice(0, MAX_TEXT)}…` : s;
+  }
   if (Array.isArray(value)) return value.map(trim);
   if (value && typeof value === "object") {
     return Object.fromEntries(Object.entries(value).filter(([k]) => !DROP.has(k)).map(([k, v]) => [k, trim(v)]));
@@ -56,7 +60,7 @@ function shortenSeries(item: unknown): unknown {
   return { ...(item as object), points: [points[0], points.at(-1)], points_total: points.length };
 }
 
-const nameOf = (r: unknown) => (r && typeof r === "object" && typeof (r as { name?: unknown }).name === "string" ? (r as { name: string }).name : null);
+const nameOf = (r: unknown) => (r && typeof r === "object" && typeof (r as { name?: unknown }).name === "string" ? decodeEntities((r as { name: string }).name) : null);
 
 /** A neighbourhood Qloo cannot resolve returns nothing rather than an error; point the agent at the city. */
 function emptyNote(e: QlooEnvelope, args: Record<string, unknown>): string {
