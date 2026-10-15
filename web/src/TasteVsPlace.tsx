@@ -19,7 +19,7 @@ export function TasteVsPlace({ c }: { c: Comparison }) {
         <h3>{c.kind === "shortlist" ? "Your shortlist: taste vs. " : "Taste picks vs. "}{city}</h3>
         <p className="viz-sub">
           Position among these {n} titles by your regulars' taste (<Cite text={c.tasteCall} />) and by affinity in {city} (<Cite text={c.localCall} />).
-          {withLocal < n && ` Qloo has ${city} data for ${withLocal} of ${n}.`}
+          {withLocal < n && ` Qloo ranks ${withLocal} of ${n} in ${city}; the rest are not ranked there, which is not a low score.`}
         </p>
         <ul className="viz-legend" aria-label="Legend">
           <li><span className="mark ring" aria-hidden /> By taste</li>
@@ -30,7 +30,7 @@ export function TasteVsPlace({ c }: { c: Comparison }) {
       <div className="dumbbells" role="list">
         <div className="db-axis" aria-hidden><span className="db-ends"><span>#1 (best)</span><span>{ord(n)}</span></span></div>
         {c.rows.map((r) => {
-          const label = `${r.name}: ${ord(r.taste)} by taste, ${r.local ? `${ord(r.local)} in ${city}` : `no ${city} data`}`;
+          const label = `${r.name}: ${ord(r.taste)} by taste, ${r.local ? `${ord(r.local)} in ${city}` : `not ranked in ${city}`}`;
           const a = at(r.taste, n);
           const b = r.local ? at(r.local, n) : null;
           return (
@@ -43,7 +43,7 @@ export function TasteVsPlace({ c }: { c: Comparison }) {
                 <span className="mark ring" style={{ left: `${a}%` }} />
                 {b !== null && <span className="mark dot" style={{ left: `${b}%` }} />}
               </span>
-              <span className="db-value">{ord(r.taste)} → {r.local ? ord(r.local) : <em>no data</em>}</span>
+              <span className="db-value">{ord(r.taste)} → {r.local ? ord(r.local) : <em>not ranked</em>}</span>
             </div>
           );
         })}
@@ -54,7 +54,7 @@ export function TasteVsPlace({ c }: { c: Comparison }) {
           <thead><tr><th scope="col">Title</th><th scope="col">By taste</th><th scope="col">In {city}</th><th scope="col">In programme</th></tr></thead>
           <tbody>
             {c.rows.map((r) => (
-              <tr key={r.id}><td>{r.name}</td><td>{ord(r.taste)}</td><td>{r.local ? ord(r.local) : "no data"}</td><td>{r.programmed ? "yes" : ""}</td></tr>
+              <tr key={r.id}><td>{r.name}</td><td>{ord(r.taste)}</td><td>{r.local ? ord(r.local) : "not ranked"}</td><td>{r.programmed ? "yes" : ""}</td></tr>
             ))}
           </tbody>
         </table>

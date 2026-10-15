@@ -95,16 +95,6 @@ export async function runBaseline(
   return out;
 }
 
-export interface ComparisonRow {
-  name: string;
-  /** Which plan featured it. */
-  source: "marquee" | "baseline" | "both";
-  /** Position in the one taste ranking of both plans' picks, or null when Qloo could not find or score it. */
-  position: number | null;
-  /** False when Qloo found no entity for the title at all. */
-  found: boolean;
-}
-
 /**
  * A title for comparing: no author suffix ("Piranesi by Susanna Clarke"), no bracketed note, no case or punctuation.
  * Qloo's search is fuzzy, so a match only counts when these agree.
@@ -114,16 +104,4 @@ export function baseTitle(s: string): string {
     .replace(/\s*[([].*?[)\]]\s*/g, " ")
     .replace(/\s+by\s+.*$/, "")
     .replace(/[\u2010-\u2015]/g, "-").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
-}
-
-/** Up to `n` distinct featured titles, in programme order. */
-export function pickTitles(p: Programme, n: number, skip: (name: string) => boolean = () => false): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const e of p.events) for (const f of e.featured) {
-    const k = baseTitle(f);
-    if (!seen.has(k) && !skip(f)) { seen.add(k); out.push(f); }
-    if (out.length >= n) return out;
-  }
-  return out;
 }

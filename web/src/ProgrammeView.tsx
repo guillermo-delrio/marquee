@@ -22,24 +22,28 @@ function download(name: string, type: string, body: string) {
   URL.revokeObjectURL(url);
 }
 
-const fmt = new Intl.DateTimeFormat(undefined, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+const fmt = new Intl.DateTimeFormat(undefined, { weekday: "short", day: "numeric", month: "short" });
+const hhmm = (d: Date) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+const CONFIDENCE = { high: "strong evidence", medium: "some evidence", low: "judgement call" } as const;
 
 export function ProgrammeView({ programme, venue, events }: { programme: Programme; venue: VenueInput; events: AgentEvent[] }) {
   const evidence = comparisons(events, { featured: programme.events.flatMap((e) => e.featured) });
   const baseline = events.find((e): e is Extract<AgentEvent, { type: "baseline" }> => e.type === "baseline")?.programme;
-  const comparison = events.find((e): e is Extract<AgentEvent, { type: "comparison" }> => e.type === "comparison");
   const [copied, setCopied] = useState(false);
   const md = () => toMarkdown(programme, venue.month, venue.location);
   // Cards in calendar order, whatever order the agent wrote them in.
   const dated = programme.events
-    .map((e, i) => ({ e, date: dateFor(e.when, venue.month, i, programme.events.length, e.date) }))
+    .map((e, i) => ({ e, date: dateFor(e.when, venue.month, i, programme.events.length, e.date, e.start_time) }))
     .sort((a, b) => a.date.getTime() - b.date.getTime());
   return (
     <section className="programme">
       <header className="panel">
         <p className="eyebrow">{venue.location} · {venue.month}</p>
         <h2>{programme.headline}</h2>
-        <p className="read"><Cite text={programme.audience_read} /></p>
+        {programme.summary?.length ? <ul className="summary">{programme.summary.map((s, i) => <li key={i}>{s}</li>)}</ul> : null}
+        {programme.summary?.length ? (
+          <details className="why"><summary>Why these picks</summary><p className="read"><Cite text={programme.audience_read} /></p></details>
+        ) : <p className="read"><Cite text={programme.audience_read} /></p>}
         <div className="actions">
           <button onClick={() => download(`marquee-${venue.month}.ics`, "text/calendar", toIcs(programme, venue.month, venue.location))}>
             Add to calendar (.ics)
@@ -67,9 +71,13 @@ export function ProgrammeView({ programme, venue, events }: { programme: Program
           <li key={i} className="panel event">
             <div className="event-head">
               <span className="when">{e.when}</span>
-              <span className={`confidence ${e.confidence}`}>{e.confidence} confidence</span>
+              <span className={`confidence ${e.confidence}`}>{CONFIDENCE[e.confidence]}</span>
             </div>
-            <p className="date">{fmt.format(date)}{e.source && <span className="source"> · {SOURCE[e.source]}</span>}</p>
+            <p className="date">
+              {fmt.format(date)}, {hhmm(date)}{e.runtime_minutes ? `–${hhmm(new Date(date.getTime() + e.runtime_minutes * 60000))}` : ""}
+              {e.version && <span className="source"> · {e.version}</span>}
+              {e.source && <span className="source"> · {SOURCE[e.source]}</span>}
+            </p>
             <h3>{e.title}</h3>
             <p className="format">{e.format}</p>
             <ul className="featured">{e.featured.map((f) => <li key={f}>{f}</li>)}</ul>
@@ -85,8 +93,7 @@ export function ProgrammeView({ programme, venue, events }: { programme: Program
           </li>
         ))}
       </ol>
-      {baseline && comparison && <WithoutQloo ours={programme} theirs={baseline} rows={comparison.rows} rankCall={comparison.rank_call}
-        noun={venue.kind === "cinema" ? "films" : venue.kind === "bookshop" ? "books" : "artists"} />}
+      {baseline && <WithoutQloo ours={programme} theirs={baseline} city={evidence[0]?.location ?? venue.location} />}
       {(programme.partners?.length || programme.audience_check) ? (
         <div className="two">
           {programme.partners?.length ? (
@@ -95,7 +102,7 @@ export function ProgrammeView({ programme, venue, events }: { programme: Program
               <p className="viz-sub">Local places whose audiences share your regulars' taste, from Qloo's place data.</p>
               <ul className="partners">
                 {programme.partners.map((p) => (
-                  <li key={p.name}><strong>{p.name}</strong> <span className="muted">{p.kind}</span><br /><Cite text={p.idea} />{p.evidence.length ? <> (<Cite text={p.evidence.join(", ")} />)</> : null}</li>
+                  <li key={p.name}><strong>{p.name}</strong> <span className="muted">{p.kind}{p.address ? ` · ${p.address}` : ""}</span><br /><Cite text={p.idea} />{p.evidence.length ? <> (<Cite text={p.evidence.join(", ")} />)</> : null}</li>
                 ))}
               </ul>
             </section>

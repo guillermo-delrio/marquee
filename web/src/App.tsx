@@ -15,6 +15,8 @@ export default function App() {
   const [samples, setSamples] = useState<Sample[]>([]);
   const [live, setLive] = useState<boolean | null>(null);
   const [formKey, setFormKey] = useState(0);
+  // True while a saved sample is on screen, so the page can say so and point to the form.
+  const [sampleShown, setSampleShown] = useState(false);
   const abort = useRef<AbortController | null>(null);
   const resultsRef = useRef<HTMLElement | null>(null);
   // In the one-column layout the results sit below the form and the samples; bring them into view.
@@ -28,6 +30,7 @@ export default function App() {
 
   const plan = async (v: VenueInput) => {
     showResults();
+    setSampleShown(false);
     abort.current?.abort();
     abort.current = new AbortController();
     setVenue(v);
@@ -53,6 +56,7 @@ export default function App() {
     setFormKey((k) => k + 1);
     setEvents(s.events);
     setRunning(false);
+    setSampleShown(true);
     showResults();
   };
 
@@ -70,7 +74,10 @@ export default function App() {
         // ?sample=N opens a saved run directly, so a sample programme can be shared as a link.
         const n = Number(new URLSearchParams(window.location.search).get("sample"));
         // Only a cached run: a shared link must never start a paid live run on page load.
-        if (list[n]?.events && new URLSearchParams(window.location.search).has("sample")) replay(list[n]);
+        // With no ?sample, the landing page opens the first sample, so a first visit shows a finished month at once.
+        const asked = new URLSearchParams(window.location.search).has("sample");
+        const first = asked ? list[n] : list[0];
+        if (first?.events) replay(first);
       })
       .catch(() => setSamples([]));
     fetchHealth().then((h) => setLive(h.live)).catch(() => setLive(null));
@@ -102,6 +109,12 @@ export default function App() {
           )}
         </aside>
         <section className="results" ref={resultsRef}>
+          {sampleShown && venue && (
+            <p className="sample-note">
+              A saved sample month for a {venue.kind.replace("_", " ")} in {venue.location}. Change the venue in the form to plan your own,
+              or open another sample.
+            </p>
+          )}
           {!venue && (
             <div className="panel intro">
               <h2>How it works</h2>

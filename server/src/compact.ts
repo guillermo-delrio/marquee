@@ -44,7 +44,7 @@ const hasPoints = (item: unknown) => {
  * films, books and artists (types ending :place or :brand, amenities, payment cards); they say nothing about an
  * audience's taste.
  */
-const PLACE_TAG = /^urn:tag:(amenity|credit_card)\b|:(place|brand)$/;
+const PLACE_TAG = /^urn:tag:(amenity|credit_card|lifestyle|influencer_appeal|category|hotel_rating)\b|:(place|brand)$/;
 const isTasteTag = (item: unknown) => {
   const type = (item as { type?: unknown } | null)?.type;
   return typeof type !== "string" || !type.startsWith("urn:tag:") || !PLACE_TAG.test(type);

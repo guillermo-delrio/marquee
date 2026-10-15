@@ -56,6 +56,7 @@ export function checkProgramme(
     if (e.source === "shortlist" && !e.featured.some((f) => shortlist.has(normalName(f)))) {
       problems.push(`${at}: marked as from the shortlist but features none of it.`);
     }
+    if (e.start_time !== undefined && !/^([01]\d|2[0-3]):[0-5]\d$/.test(e.start_time)) problems.push(`${at}: start_time "${e.start_time}" is not 24-hour HH:MM.`);
     if (!e.date?.startsWith(`${known.month}-`)) {
       problems.push(`${at}: date ${e.date ?? "(missing)"} is outside ${known.month}.`);
       return;

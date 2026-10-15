@@ -207,42 +207,41 @@ describe("validate shortlist", () => {
   });
 });
 
-describe("comparison without Qloo", () => {
-  it("plans without tools, then ranks both plans' picks in one Qloo call", async () => {
-    // A Qloo stand-in: describe finds every title, recommend returns Paterson, rank puts the options in reverse order.
-    const calls: { name: string; args: Record<string, unknown> }[] = [];
-    const qloo: QlooClient = {
-      mock: true,
-      tools: async () => [],
-      close: async () => {},
-      call: async (name, args) => {
-        calls.push({ name, args });
-        // Fuzzy search: a placeholder comes back as some other title, which must not count as found.
-        if (name === "qloo_describe") return { status: "ok", results: [{ entity_id: `ID-${args.entity}`, name: String(args.entity).startsWith("Local") ? "Localism" : args.entity }] };
-        if (name === "qloo_recommend") return { status: "ok", results: [{ entity_id: "ID-Paterson", name: "Paterson" }] };
-        if (name === "qloo_rank") return { status: "ok", results: [...(args.options as string[])].reverse().map((id) => ({ entity_id: id, name: id })) };
-        return { status: "ok", results: [] };
-      },
-    };
-    const theirs = { ...programme, events: [{ ...programme.events[0], featured: ["Columbus by Kogonada", "Past Lives by Celine Song", "Local films (to be confirmed)"] }] };
+describe("plan without Qloo", () => {
+  it("plans the same month with no tools and emits it, without grading it by Qloo", async () => {
+    const calls: string[] = [];
+    const qloo: QlooClient = { ...fakeQloo, call: async (name, args) => { calls.push(name); return mockCall(name, args); } };
+    const theirs = { ...programme, events: [{ ...programme.events[0], featured: ["Columbus"] }] };
     const events: AgentEvent[] = [];
     const requests: Record<string, unknown>[] = [];
     await runAgent(venue, qloo, (e) => events.push(e), fakeAnthropic([
-      [use("t1", "qloo_recommend", { target_type: "movie", signals: ["ID-Past Lives"] })],
+      [use("t1", "qloo_rank", { options: ["Paterson"], option_type: "movie" })],
       [use("t2", "submit_programme", programme)],
       [use("t3", "submit_programme", theirs)],
     ], requests));
-    expect(requests[2].tools).toHaveLength(1); // the baseline has no Qloo tools
-    expect(events.find((e) => e.type === "baseline")).toMatchObject({ programme: { events: [{ featured: theirs.events[0].featured }] } });
-    const rank = calls.find((c) => c.name === "qloo_rank");
-    expect(rank?.args).toMatchObject({ options: ["ID-Paterson", "ID-Columbus by Kogonada"], signals: ["ID-Past Lives"] });
-    expect(rank?.args).not.toHaveProperty("signal_location");
-    // The recent hit is left out, the author suffix does not stop a match, and the placeholder is not found.
-    expect(events.find((e) => e.type === "comparison")).toMatchObject({ rows: [
-      { name: "Columbus by Kogonada", source: "baseline", position: 1, found: true },
-      { name: "Paterson", source: "marquee", position: 2, found: true },
-      { name: "Local films (to be confirmed)", source: "baseline", position: null, found: false },
-    ] });
+    expect(requests[2].tools).toHaveLength(1); // only submit_programme: no Qloo tools
+    expect(events.find((e) => e.type === "baseline")).toMatchObject({ programme: { events: [{ featured: ["Columbus"] }] } });
+    expect(calls).toEqual(["qloo_rank"]); // nothing ranks the two plans against each other
+  });
+});
+
+describe("entity handles in the agent loop", () => {
+  it("shows the model handles and sends Qloo the real ids", async () => {
+    const id = "9A62B37E-9A6D-47DA-A6FD-9414FA7F7710";
+    const seen: Record<string, unknown>[] = [];
+    const qloo: QlooClient = { ...fakeQloo, call: async (name, args) => {
+      seen.push(args);
+      return { status: "ok", results: [{ entity_id: id, name: "Paterson" }] };
+    } };
+    const requests: Record<string, unknown>[] = [];
+    await runAgent(venue, qloo, () => {}, fakeAnthropic([
+      [use("t1", "qloo_describe", { entity: "Paterson" })],
+      [use("t2", "qloo_recommend", { signals: ["e1"] })],
+      [use("t3", "submit_programme", programme)],
+    ], requests), undefined, { compare: false });
+    expect(JSON.stringify(requests[1].messages)).toContain('\\"entity_id\\":\\"e1\\"');
+    expect(JSON.stringify(requests[1].messages)).not.toContain(id);
+    expect(seen[1]).toEqual({ signals: [id] });
   });
 });
 

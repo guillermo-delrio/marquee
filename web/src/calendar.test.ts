@@ -24,6 +24,16 @@ describe("calendar", () => {
     expect(dateFor("Sunday 22 November, matinee", "2026-11", 0, 4).getDate()).toBe(22);
     expect(dateFor("Week 1, Thursday evening", "2026-11", 0, 4, "2026-12-03").getDate()).toBe(5); // outside the month: ignored
   });
+  it("uses the event's own start time when it has one", () => {
+    const d = dateFor("Week 3, Friday late show", "2026-11", 0, 4, "2026-11-20", "22:30");
+    expect([d.getDate(), d.getHours(), d.getMinutes()]).toEqual([20, 22, 30]);
+    expect(dateFor("Week 3, Friday evening", "2026-11", 0, 4, "2026-11-20", "7pm").getHours()).toBe(19); // unreadable: the old guess
+  });
+  it("ends a calendar event after its runtime", () => {
+    const ics = toIcs({ ...programme, events: [{ ...programme.events[0], date: "2026-11-05", start_time: "20:00", runtime_minutes: 135 }] }, "2026-11", "Lavapiés");
+    expect(ics).toMatch(/DTSTART:20261105T200000/);
+    expect(ics).toMatch(/DTEND:20261105T221500/);
+  });
   it("spreads unreadable hints across the month", () => {
     expect(dateFor("Sometime", "2026-11", 2, 4).getMonth()).toBe(10);
   });

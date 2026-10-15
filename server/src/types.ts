@@ -1,4 +1,3 @@
-import type { ComparisonRow } from "./baseline.js";
 export const VENUE_KINDS = ["cinema", "bookshop", "music_bar"] as const;
 export type VenueKind = (typeof VENUE_KINDS)[number];
 
@@ -25,6 +24,11 @@ export interface ProgrammeEvent {
   when: string;
   /** YYYY-MM-DD; absent in runs saved before it existed. */
   date?: string;
+  /** 24-hour HH:MM. */
+  start_time?: string;
+  runtime_minutes?: number;
+  /** Cinemas where films are usually dubbed: "original with subtitles" or "dubbed". */
+  version?: string;
   format: string;
   featured: string[];
   why: string;
@@ -47,6 +51,8 @@ export interface ShortlistNote {
 
 export interface Programme {
   headline: string;
+  /** Three plain bullets for the owner; absent in runs saved before it existed. */
+  summary?: string[];
   audience_read: string;
   events: ProgrammeEvent[];
   limits: string[];
@@ -61,6 +67,7 @@ export interface Programme {
 /** A local place whose audience shares the venue's taste, suggested for co-promotion. */
 export interface Partner {
   name: string;
+  address?: string;
   kind: string;
   idea: string;
   evidence: string[];
@@ -98,7 +105,6 @@ export type AgentEvent =
   | { type: "programme"; programme: Programme }
   /** The same month planned by the same model without Qloo, for comparison. */
   | { type: "baseline"; programme: Programme }
-  /** Both plans' picks in one Qloo taste ranking (call `rank_call`). */
-  | { type: "comparison"; rank_call: string; rows: ComparisonRow[] }
+
   | { type: "error"; message: string }
   | { type: "done"; tool_calls: number; input_tokens: number; cached_tokens?: number; output_tokens: number; cost_usd: number; mock: boolean };

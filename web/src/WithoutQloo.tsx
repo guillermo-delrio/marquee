@@ -1,73 +1,72 @@
 import { Cite } from "./Cite";
 import type { Programme } from "./types";
 
-export interface ComparisonRow {
-  name: string;
-  source: "marquee" | "baseline" | "both";
-  position: number | null;
-  found: boolean;
-}
-
-const SOURCE = { marquee: "Marquee", baseline: "Claude alone", both: "Both" } as const;
 const VERDICT = { programmed: "Programmed", reserve: "Reserve", skip: "Skip", not_found: "Not found" } as const;
 
-const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
+/** Titles compare without authors ("Piranesi by Susanna Clarke"), notes in brackets, case or punctuation. */
+const key = (s: string) => s.normalize("NFKC").toLowerCase().replace(/\s*[([].*?[)\]]\s*/g, " ").replace(/\s+by\s+.*$/, "")
+  .replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+
+const titles = (p: Programme) => {
+  const out = new Map<string, string>();
+  for (const e of p.events) for (const f of e.featured) if (!out.has(key(f))) out.set(key(f), f);
+  return out;
+};
 
 /**
- * The brief's own test: would this work the same without Qloo? The same model planned the month with no Qloo; one Qloo
- * ranking by the regulars' taste then placed both plans' picks, so the two are measured in a single call.
+ * The brief's test, "would this work the same without Qloo?", shown as facts rather than a score: the same model
+ * planned the month with no Qloo, and this lists where the two plans differ and the evidence Marquee had for its
+ * verdicts. Nothing here grades one plan with the data the other was built from.
  */
-export function WithoutQloo({ ours, theirs, rows, rankCall, noun }: {
-  ours: Programme; theirs: Programme; rows: ComparisonRow[]; rankCall: string; noun: string;
-}) {
-  const placed = rows.filter((r) => r.position !== null);
-  const avg = (s: "marquee" | "baseline") => mean(placed.filter((r) => r.source === s || r.source === "both").map((r) => r.position!));
-  const a = avg("marquee");
-  const b = avg("baseline");
-  const theirVerdicts = new Map((theirs.shortlist_notes ?? []).map((n) => [n.title.toLowerCase(), n.verdict]));
-  const verdictRows = (ours.shortlist_notes ?? []).map((n) => ({ title: n.title, ours: n.verdict, theirs: theirVerdicts.get(n.title.toLowerCase()) }));
+export function WithoutQloo({ ours, theirs, city }: { ours: Programme; theirs: Programme; city: string }) {
+  const a = titles(ours);
+  const b = titles(theirs);
+  const onlyOurs = [...a].filter(([k]) => !b.has(k)).map(([, t]) => t);
+  const onlyTheirs = [...b].filter(([k]) => !a.has(k)).map(([, t]) => t);
+  const both = [...a].filter(([k]) => b.has(k)).map(([, t]) => t);
+  const theirVerdicts = new Map((theirs.shortlist_notes ?? []).map((n) => [key(n.title), n]));
+  const verdicts = (ours.shortlist_notes ?? []).map((n) => ({ ours: n, theirs: theirVerdicts.get(key(n.title)) }));
+  const differ = verdicts.filter((v) => v.theirs && v.theirs.verdict !== v.ours.verdict);
+  const programmedByThem = verdicts.filter((v) => v.theirs?.verdict === "programmed").length;
   return (
     <section className="panel without">
       <h3>With and without Qloo</h3>
       <p className="viz-sub">
-        The same model planned this month again from its own knowledge, with no Qloo. One Qloo ranking by your regulars' taste
-        (<Cite text={rankCall} />) then placed both plans' picks{a !== null && b !== null ? <>: on average, Marquee's sit at
-        <strong> #{a.toFixed(1)}</strong>, Claude alone's at <strong>#{b.toFixed(1)}</strong> (lower is closer to your regulars' taste).</>
-          : a !== null ? <>. None of Claude alone's own picks is one of the {noun} Qloo could find, so only Marquee's could be ranked.</> : "."}
+        The same model planned this month again with no Qloo: no data on how titles land in {city}, who their audiences are,
+        or which local places share the taste. Here is where the two plans part ways.
       </p>
-      <ol className="compare">
-        {rows.map((r) => (
-          <li key={r.name} className={r.source}>
-            <span className="pos">{r.position !== null ? `#${r.position}` : "–"}</span>
-            <span className="name">{r.name}</span>
-            <span className={`tag ${r.source}`}>{SOURCE[r.source]}</span>
-            {!r.found && <span className="muted">not found among Qloo's {noun}</span>}
-            {r.found && r.position === null && <span className="muted">not scored</span>}
-          </li>
-        ))}
-      </ol>
-      {verdictRows.length > 0 && (
-        <details>
-          <summary>Shortlist verdicts, side by side</summary>
-          <table className="verdict-table">
-            <thead><tr><th scope="col">Title</th><th scope="col">Marquee</th><th scope="col">Claude alone</th></tr></thead>
-            <tbody>
-              {verdictRows.map((v) => (
-                <tr key={v.title} className={v.theirs && v.theirs !== v.ours ? "differs" : ""}>
-                  <td>{v.title}</td><td>{VERDICT[v.ours]}</td><td>{v.theirs ? VERDICT[v.theirs] : "–"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </details>
+      {verdicts.length > 0 && (
+        <p className="without-lead">
+          Without Qloo it programmed <strong>{programmedByThem} of {verdicts.length}</strong> bookable titles; with Qloo,
+          <strong> {verdicts.filter((v) => v.ours.verdict === "programmed").length}</strong>, and {differ.length} verdict{differ.length === 1 ? "" : "s"} differ.
+        </p>
+      )}
+      <div className="without-cols">
+        <div><h4>Only with Qloo</h4><ul className="plain">{onlyOurs.map((t) => <li key={t}>{t}</li>)}</ul></div>
+        <div><h4>Only without Qloo</h4><ul className="plain">{onlyTheirs.map((t) => <li key={t}>{t}</li>)}</ul>{onlyTheirs.length === 0 && <p className="muted">None</p>}</div>
+        <div><h4>Both</h4><ul className="plain">{both.map((t) => <li key={t}>{t}</li>)}</ul>{both.length === 0 && <p className="muted">None</p>}</div>
+      </div>
+      {differ.length > 0 && (
+        <table className="verdict-table">
+          <thead><tr><th scope="col">Title</th><th scope="col">Without Qloo</th><th scope="col">With Qloo, and why</th></tr></thead>
+          <tbody>
+            {differ.map((v) => (
+              <tr key={v.ours.title}>
+                <td>{v.ours.title}</td>
+                <td>{VERDICT[v.theirs!.verdict]}</td>
+                <td><strong>{VERDICT[v.ours.verdict]}</strong>: <Cite text={v.ours.reason} />{v.ours.evidence.length ? <> (<Cite text={v.ours.evidence.join(", ")} />)</> : null}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
       <details>
-        <summary>Claude alone's plan</summary>
+        <summary>The plan without Qloo</summary>
         <p><strong>{theirs.headline}</strong></p>
         <ul className="plain">
-          {theirs.events.map((e, i) => <li key={i}>{e.date ?? e.when}: {e.title} — {e.featured.join(", ")}</li>)}
+          {theirs.events.map((e, i) => <li key={i}>{e.date ?? e.when}: {e.title} ({e.featured.join(", ")})</li>)}
         </ul>
-        <p className="muted">No citations: nothing in this plan is grounded in data about your audience or your city.</p>
+        <p className="muted">No citations: on taste alone a strong model knows well-known titles about as well as Qloo, but it cannot see how they land in {city}, who their audiences are, or which places share them.</p>
       </details>
     </section>
   );

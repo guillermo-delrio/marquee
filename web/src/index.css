@@ -207,3 +207,11 @@ details.raw { margin-top: 6px; }
 .verdict-table tr.differs td { background: var(--accent-soft); }
 ul.plain { margin: 6px 0; padding-left: 18px; font-size: 0.9rem; }
 .partners { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; font-size: 0.92rem; }
+
+.summary { margin: 6px 0 10px; padding-left: 20px; font-size: 1rem; display: grid; gap: 4px; }
+details.why summary { cursor: pointer; color: var(--ink-2); font-size: 0.85rem; }
+.without-lead { margin: 8px 0; }
+.without-cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 8px 0; }
+.without-cols h4 { margin: 0 0 4px; font-size: 0.85rem; color: var(--ink-2); }
+@media (max-width: 700px) { .without-cols { grid-template-columns: minmax(0, 1fr); } }
+.sample-note { background: var(--accent-soft); border-radius: var(--radius); padding: 10px 14px; font-size: 0.92rem; }

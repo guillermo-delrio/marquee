@@ -15,13 +15,14 @@ function writtenDay(w: string, m: number): number | null {
  * Place an event in the month: its own ISO date when it has one inside the month, else a date written in the
  * hint, else "Week 2, Friday" counted from the 1st; unreadable hints spread across the month.
  */
-export function dateFor(when: string, month: string, index: number, total: number, iso?: string): Date {
+export function dateFor(when: string, month: string, index: number, total: number, iso?: string, start?: string): Date {
   const [y, m] = month.split("-").map(Number);
   const w = when.toLowerCase();
   const week = Number(/week\s*(\d)/.exec(w)?.[1] ?? 0);
   const day = DAYS.findIndex((d) => w.includes(d));
-  const hour = /matin|afternoon|morning|lunch/.test(w) ? 16 : 19;
-  const minute = hour === 19 ? 30 : 0;
+  const own24 = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(start ?? "");
+  const hour = own24 ? Number(own24[1]) : /matin|afternoon|morning|lunch/.test(w) ? 16 : 19;
+  const minute = own24 ? Number(own24[2]) : hour === 19 ? 30 : 0;
   const last = new Date(y, m, 0).getDate();
   const own = iso?.startsWith(`${month}-`) ? Number(iso.slice(8, 10)) : writtenDay(w, m);
   if (own && own >= 1 && own <= last) return new Date(y, m - 1, own, hour, minute);
@@ -42,8 +43,8 @@ const escape = (s: string) => s.replace(/[\\;,]/g, (c) => `\\${c}`).replace(/\n/
 
 export function toIcs(programme: Programme, month: string, venue: string): string {
   const events = programme.events.map((e: ProgrammeEvent, i) => {
-    const start = dateFor(e.when, month, i, programme.events.length, e.date);
-    const end = new Date(start.getTime() + 2 * 3600 * 1000);
+    const start = dateFor(e.when, month, i, programme.events.length, e.date, e.start_time);
+    const end = new Date(start.getTime() + (e.runtime_minutes ?? 120) * 60 * 1000);
     return [
       "BEGIN:VEVENT",
       `UID:marquee-${month}-${i}@marquee.local`,
