@@ -1,7 +1,7 @@
 import { Cite } from "./Cite";
 import type { Programme } from "./types";
 
-const VERDICT = { programmed: "Programmed", reserve: "Reserve", skip: "Skip", not_found: "Not found" } as const;
+const VERDICT = { programmed: "Programmed", featured: "Played, not booked", reserve: "Reserve", skip: "Skip", not_found: "Not found" } as const;
 
 /** Titles compare without authors ("Piranesi by Susanna Clarke"), notes in brackets, case or punctuation. */
 const key = (s: string) => s.normalize("NFKC").toLowerCase().replace(/\s*[([].*?[)\]]\s*/g, " ").replace(/\s+by\s+.*$/, "")
@@ -14,46 +14,54 @@ const titles = (p: Programme) => {
 };
 
 /**
- * The brief's test, "would this work the same without Qloo?", shown as facts rather than a score: the same model
- * planned the month with no Qloo, and this lists where the two plans differ and the evidence Marquee had for its
- * verdicts. Nothing here grades one plan with the data the other was built from.
+ * The brief's test, "would this work the same without Qloo?", shown as facts rather than a score. The same model,
+ * with the same programme rules and no Qloo, planned the month twice: the two runs show how much plans differ by
+ * chance, and a difference only counts when both runs without Qloo agree on it.
  */
-export function WithoutQloo({ ours, theirs, city }: { ours: Programme; theirs: Programme; city: string }) {
+export function WithoutQloo({ ours, theirs, second, city, informed }: {
+  ours: Programme; theirs: Programme; second?: Programme; city: string; informed: string[];
+}) {
   const a = titles(ours);
   const b = titles(theirs);
-  const onlyOurs = [...a].filter(([k]) => !b.has(k)).map(([, t]) => t);
-  const onlyTheirs = [...b].filter(([k]) => !a.has(k)).map(([, t]) => t);
-  const both = [...a].filter(([k]) => b.has(k)).map(([, t]) => t);
-  const theirVerdicts = new Map((theirs.shortlist_notes ?? []).map((n) => [key(n.title), n]));
-  const verdicts = (ours.shortlist_notes ?? []).map((n) => ({ ours: n, theirs: theirVerdicts.get(key(n.title)) }));
-  const differ = verdicts.filter((v) => v.theirs && v.theirs.verdict !== v.ours.verdict);
-  const programmedByThem = verdicts.filter((v) => v.theirs?.verdict === "programmed").length;
+  const c = second ? titles(second) : b;
+  const inBoth = (k: string) => b.has(k) && c.has(k);
+  const inEither = (k: string) => b.has(k) || c.has(k);
+  const onlyOurs = [...a].filter(([k]) => !inEither(k)).map(([, t]) => t);
+  const onlyTheirs = [...b].filter(([k]) => inBoth(k) && !a.has(k)).map(([, t]) => t);
+  const shared = [...a].filter(([k]) => inBoth(k)).map(([, t]) => t);
+  const runOverlap = second ? [...b.keys()].filter((k) => c.has(k)).length : null;
+  const runUnion = second ? new Set([...b.keys(), ...c.keys()]).size : null;
+  const v1 = new Map((theirs.shortlist_notes ?? []).map((n) => [key(n.title), n.verdict]));
+  // A second run without verdicts cannot confirm or contradict the first, so the first stands alone.
+  const v2 = new Map(((second?.shortlist_notes?.length ? second : theirs).shortlist_notes ?? []).map((n) => [key(n.title), n.verdict]));
+  const verdicts = (ours.shortlist_notes ?? []).map((n) => ({ ours: n, theirs: v1.get(key(n.title)), again: v2.get(key(n.title)) }));
+  // A verdict difference counts only when both runs without Qloo agree with each other and not with Marquee.
+  const differ = verdicts.filter((v) => v.theirs && v.theirs === v.again && v.theirs !== v.ours.verdict);
+  const unstable = verdicts.filter((v) => v.theirs && v.again && v.theirs !== v.again).length;
   return (
     <section className="panel without">
       <h3>With and without Qloo</h3>
-      <p className="viz-sub">
-        The same model planned this month again with no Qloo: no data on how titles land in {city}, who their audiences are,
-        or which local places share the taste. Here is where the two plans part ways.
-      </p>
-      {verdicts.length > 0 && (
-        <p className="without-lead">
-          Without Qloo it programmed <strong>{programmedByThem} of {verdicts.length}</strong> bookable titles; with Qloo,
-          <strong> {verdicts.filter((v) => v.ours.verdict === "programmed").length}</strong>, and {differ.length} verdict{differ.length === 1 ? "" : "s"} differ.
-        </p>
+      {informed.length > 0 && (
+        <ul className="informed">{informed.map((x) => <li key={x}>{x}</li>)}</ul>
       )}
+      <p className="viz-sub">
+        The same model, with the same rules and no Qloo, planned this month twice. It cannot see how titles land in {city},
+        who their audiences are, or which places share the taste.
+        {runOverlap !== null && <> Its two plans shared {runOverlap} of {runUnion} titles{unstable ? ` and disagreed with each other on ${unstable} verdict${unstable === 1 ? "" : "s"}` : ""}: that is how much plans differ by chance, so only differences both runs agree on are listed.</>}
+      </p>
       <div className="without-cols">
-        <div><h4>Only with Qloo</h4><ul className="plain">{onlyOurs.map((t) => <li key={t}>{t}</li>)}</ul></div>
-        <div><h4>Only without Qloo</h4><ul className="plain">{onlyTheirs.map((t) => <li key={t}>{t}</li>)}</ul>{onlyTheirs.length === 0 && <p className="muted">None</p>}</div>
-        <div><h4>Both</h4><ul className="plain">{both.map((t) => <li key={t}>{t}</li>)}</ul>{both.length === 0 && <p className="muted">None</p>}</div>
+        <div><h4>Only with Qloo</h4><ul className="plain">{onlyOurs.map((t) => <li key={t}>{t}</li>)}</ul>{onlyOurs.length === 0 && <p className="muted">None</p>}</div>
+        <div><h4>Only without Qloo (both runs)</h4><ul className="plain">{onlyTheirs.map((t) => <li key={t}>{t}</li>)}</ul>{onlyTheirs.length === 0 && <p className="muted">None</p>}</div>
+        <div><h4>All three plans</h4><ul className="plain">{shared.map((t) => <li key={t}>{t}</li>)}</ul>{shared.length === 0 && <p className="muted">None</p>}</div>
       </div>
       {differ.length > 0 && (
         <table className="verdict-table">
-          <thead><tr><th scope="col">Title</th><th scope="col">Without Qloo</th><th scope="col">With Qloo, and why</th></tr></thead>
+          <thead><tr><th scope="col">Title</th><th scope="col">Without Qloo (both runs)</th><th scope="col">With Qloo, and why</th></tr></thead>
           <tbody>
             {differ.map((v) => (
               <tr key={v.ours.title}>
                 <td>{v.ours.title}</td>
-                <td>{VERDICT[v.theirs!.verdict]}</td>
+                <td>{VERDICT[v.theirs!]}</td>
                 <td><strong>{VERDICT[v.ours.verdict]}</strong>: <Cite text={v.ours.reason} />{v.ours.evidence.length ? <> (<Cite text={v.ours.evidence.join(", ")} />)</> : null}</td>
               </tr>
             ))}
@@ -61,12 +69,14 @@ export function WithoutQloo({ ours, theirs, city }: { ours: Programme; theirs: P
         </table>
       )}
       <details>
-        <summary>The plan without Qloo</summary>
-        <p><strong>{theirs.headline}</strong></p>
-        <ul className="plain">
-          {theirs.events.map((e, i) => <li key={i}>{e.date ?? e.when}: {e.title} ({e.featured.join(", ")})</li>)}
-        </ul>
-        <p className="muted">No citations: on taste alone a strong model knows well-known titles about as well as Qloo, but it cannot see how they land in {city}, who their audiences are, or which places share them.</p>
+        <summary>The plans without Qloo</summary>
+        {[theirs, second].filter((p): p is Programme => !!p).map((p, i) => (
+          <div key={i}>
+            <p><strong>Run {i + 1}: {p.headline}</strong></p>
+            <ul className="plain">{p.events.map((e, j) => <li key={j}>{e.date ?? e.when}: {e.title} ({e.featured.join(", ")})</li>)}</ul>
+          </div>
+        ))}
+        <p className="muted">No citations: on taste alone a strong model knows well-known titles about as well as Qloo; what it cannot see is the city, the audiences and the places.</p>
       </details>
     </section>
   );

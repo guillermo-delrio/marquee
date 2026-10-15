@@ -32,7 +32,7 @@ export interface ProgrammeEvent {
 
 export interface ShortlistNote {
   title: string;
-  verdict: "programmed" | "reserve" | "skip" | "not_found";
+  verdict: "programmed" | "featured" | "reserve" | "skip" | "not_found";
   reason: string;
   evidence: string[];
 }
@@ -47,6 +47,7 @@ export interface Programme {
   shortlist_notes?: ShortlistNote[];
   partners?: Partner[];
   audience_check?: string;
+  soundtrack?: { name: string; evidence: string[] }[];
 }
 /** A local place whose audience shares the venue's taste, suggested for co-promotion. */
 export interface Partner {
@@ -63,7 +64,7 @@ export type AgentEvent =
   | { type: "tool_call"; call_id: string; name: string; args: Record<string, unknown> }
   | { type: "tool_result"; call_id: string; name: string; status: string; summary: string; result_count?: number; warnings?: string[]; raw: unknown }
   | { type: "programme"; programme: Programme }
-  | { type: "baseline"; programme: Programme }
+  | { type: "baseline"; programme: Programme; second?: Programme }
   | { type: "error"; message: string }
   | { type: "done"; tool_calls: number; input_tokens: number; cached_tokens?: number; output_tokens: number; cost_usd: number; mock: boolean };
 

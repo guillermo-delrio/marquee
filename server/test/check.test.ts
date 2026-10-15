@@ -50,7 +50,7 @@ describe("shortlist checks", () => {
       { title: "Paterson", verdict: "skip", reason: "", evidence: ["q2"] },
     ]), shortlisted).join("\n");
     expect(problems).toMatch(/no verdict for "Old Joy"/);
-    expect(problems).toMatch(/"Paterson" is featured in the programme but its verdict is skip/);
+    expect(problems).toMatch(/"Paterson" is in the programme but its verdict is skip/);
   });
 
   it("checks that an event marked shortlist features a shortlisted title", () => {
@@ -69,5 +69,27 @@ describe("partner checks", () => {
         { name: "Made Up Bar", kind: "bar", idea: "", evidence: ["q1"] }] };
     const problems = checkProgramme(p, { ...known, names: new Set([...known.names, "Café de la Luz"]) });
     expect(problems).toEqual([expect.stringMatching(/Partner "Made Up Bar" does not appear in any Qloo result/)]);
+  });
+});
+
+describe("verdict rules", () => {
+  const shortlisted = { ...known, shortlist: ["Paterson", "Old Joy"] };
+  const two = [event({ source: "shortlist" }), event({ featured: ["Columbus"], date: "2026-11-07", when: "Week 1, Saturday evening" })];
+  it("accepts featured for a title played but not booked", () => {
+    expect(checkProgramme({ ...programme(two), shortlist_notes: [
+      { title: "Paterson", verdict: "featured", reason: "A listening night: too big to book live.", evidence: [] },
+      { title: "Old Joy", verdict: "reserve", reason: "Fits the taste but no slot is left.", evidence: [] },
+    ] }, shortlisted)).toEqual([]);
+  });
+  it("rejects missing data given as a reason to skip, but lets an unknown title wait in reserve", () => {
+    const problems = checkProgramme({ ...programme(two), shortlist_notes: [
+      { title: "Paterson", verdict: "programmed", reason: "", evidence: [] },
+      { title: "Old Joy", verdict: "skip", reason: "Low taste fit and absent from the Madrid ranking.", evidence: [] },
+    ] }, shortlisted).join("\n");
+    expect(problems).toMatch(/"Old Joy": the reason rests on missing data \("absent"\)/);
+    expect(checkProgramme({ ...programme(two), shortlist_notes: [
+      { title: "Paterson", verdict: "programmed", reason: "", evidence: [] },
+      { title: "Old Joy", verdict: "reserve", reason: "Qloo has no data on it, so it waits as a swap-in.", evidence: [] },
+    ] }, shortlisted)).toEqual([]);
   });
 });

@@ -13,7 +13,7 @@ const SOURCE: Record<NonNullable<ProgrammeEvent["source"]>, string> = {
   local: "Local crowd-pleaser",
   reprise: "Reprise",
 };
-const VERDICT: Record<ShortlistNote["verdict"], string> = { programmed: "Programmed", reserve: "Reserve", skip: "Skip", not_found: "Not found" };
+const VERDICT: Record<ShortlistNote["verdict"], string> = { programmed: "Programmed", featured: "Played, not booked", reserve: "Reserve", skip: "Skip", not_found: "Not found" };
 
 function download(name: string, type: string, body: string) {
   const url = URL.createObjectURL(new Blob([body], { type }));
@@ -28,7 +28,17 @@ const CONFIDENCE = { high: "strong evidence", medium: "some evidence", low: "jud
 
 export function ProgrammeView({ programme, venue, events }: { programme: Programme; venue: VenueInput; events: AgentEvent[] }) {
   const evidence = comparisons(events, { featured: programme.events.flatMap((e) => e.featured) });
-  const baseline = events.find((e): e is Extract<AgentEvent, { type: "baseline" }> => e.type === "baseline")?.programme;
+  const baselineEvent = events.find((e): e is Extract<AgentEvent, { type: "baseline" }> => e.type === "baseline");
+  const baseline = baselineEvent?.programme;
+  // What Qloo told Marquee that a plan without it could not know, counted from the run itself.
+  const shortlistLocal = evidence.find((c) => c.kind === "shortlist");
+  const profiles = events.filter((e) => e.type === "tool_result" && e.name === "qloo_audience_demographics" && (e.result_count ?? 0) > 0).length;
+  const informed = [
+    ...(shortlistLocal ? [`Qloo ranked ${shortlistLocal.rows.filter((r) => r.local !== null).length} of your ${shortlistLocal.rows.length} bookable titles in ${shortlistLocal.location}.`] : []),
+    ...(profiles ? [`It profiled the audiences of ${profiles} lead pick${profiles === 1 ? "" : "s"}.`] : []),
+    ...(programme.partners?.length ? [`It found ${programme.partners.length} nearby places whose audiences share the taste.`] : []),
+    ...(programme.soundtrack?.length ? [`It found ${programme.soundtrack.length} musicians this audience over-indexes on.`] : []),
+  ];
   const [copied, setCopied] = useState(false);
   const md = () => toMarkdown(programme, venue.month, venue.location);
   // Cards in calendar order, whatever order the agent wrote them in.
@@ -93,7 +103,7 @@ export function ProgrammeView({ programme, venue, events }: { programme: Program
           </li>
         ))}
       </ol>
-      {baseline && <WithoutQloo ours={programme} theirs={baseline} city={evidence[0]?.location ?? venue.location} />}
+      {baseline && <WithoutQloo ours={programme} theirs={baseline} second={baselineEvent?.second} city={evidence[0]?.location ?? venue.location} informed={informed} />}
       {(programme.partners?.length || programme.audience_check) ? (
         <div className="two">
           {programme.partners?.length ? (
@@ -105,6 +115,13 @@ export function ProgrammeView({ programme, venue, events }: { programme: Program
                   <li key={p.name}><strong>{p.name}</strong> <span className="muted">{p.kind}{p.address ? ` · ${p.address}` : ""}</span><br /><Cite text={p.idea} />{p.evidence.length ? <> (<Cite text={p.evidence.join(", ")} />)</> : null}</li>
                 ))}
               </ul>
+            </section>
+          ) : null}
+          {programme.soundtrack?.length ? (
+            <section className="panel">
+              <h3>Pre-show soundtrack</h3>
+              <p className="viz-sub">Musicians this audience over-indexes on, from Qloo: a playlist for the lobby, or a themed night.</p>
+              <p>{programme.soundtrack.map((a) => a.name).join(" · ")} {programme.soundtrack[0]?.evidence.length ? <>(<Cite text={programme.soundtrack[0].evidence.join(", ")} />)</> : null}</p>
             </section>
           ) : null}
           {programme.audience_check ? (

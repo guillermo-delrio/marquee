@@ -21,6 +21,9 @@ export function namesIn(value: unknown, into = new Set<string>()): Set<string> {
   return into;
 }
 
+/** A reason that treats a title's absence from a ranking as evidence against it (checked for skips). */
+const MISSING_AS_REASON = /\b(absent|missing|not ranked|isn't ranked|no (local |city )?(signal|data))\b/i;
+
 /**
  * Rules the prompt states and code enforces: the number of events, dates inside the month on the weekday named,
  * featured titles that Qloo returned, and citations of calls that happened. Returns the problems, empty when none.
@@ -38,10 +41,18 @@ export function checkProgramme(
     for (const title of known.shortlist ?? []) {
       const note = notes.get(normalName(title));
       if (!note) problems.push(`shortlist_notes has no verdict for "${title}"; give one for every shortlisted title.`);
-      else if (featured.has(normalName(title)) !== (note.verdict === "programmed")) {
-        problems.push(featured.has(normalName(title))
-          ? `"${title}" is featured in the programme but its verdict is ${note.verdict}; use programmed.`
-          : `"${title}" has the verdict programmed but no event features it.`);
+      else {
+        const inProgramme = featured.has(normalName(title));
+        const used = note.verdict === "programmed" || note.verdict === "featured";
+        if (inProgramme !== used) {
+          problems.push(inProgramme
+            ? `"${title}" is in the programme but its verdict is ${note.verdict}; use programmed (booked) or featured (played, not booked).`
+            : `"${title}" has the verdict ${note.verdict} but no event features it.`);
+        }
+        // Holding an unknown in reserve is fair; skipping a title because Qloo has no signal on it is not.
+        if (note.verdict === "skip" && MISSING_AS_REASON.test(note.reason)) {
+          problems.push(`"${title}": the reason rests on missing data ("${note.reason.match(MISSING_AS_REASON)![0]}"); missing is not a low score. Give a reason from the data Qloo did return, or the programme.`);
+        }
       }
     }
   }
