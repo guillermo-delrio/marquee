@@ -37,13 +37,14 @@ export function Trail({ events, running }: { events: AgentEvent[]; running: bool
       <ol>
         {calls.map((c) => {
           const r = results.get(c.call_id);
-          const state = !r ? "pending" : r.status === "ok" ? "ok" : r.status === "error" ? "error" : "partial";
+          // needs_input is Qloo asking which of several matches was meant: the agent picks one and calls again.
+          const state = !r ? "pending" : r.status === "ok" ? "ok" : r.status === "error" ? "error" : r.status === "needs_input" ? "retry" : "partial";
           return (
             <li key={c.call_id} id={`step-${c.call_id}`} className={`step ${state}`}>
               <div className="step-head">
                 <span className="call-id">{c.call_id}</span>
                 <span className="step-label">{label(c, names)}</span>
-                <span className="step-status">{r ? `${r.status}${r.result_count !== undefined ? ` · ${r.result_count}` : ""}` : "…"}</span>
+                <span className="step-status">{r ? (r.status === "needs_input" ? "ambiguous: asked again" : `${r.status}${r.result_count !== undefined ? ` · ${r.result_count}` : ""}`) : "…"}</span>
               </div>
               {r && (
                 <details>

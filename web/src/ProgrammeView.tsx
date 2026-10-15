@@ -40,6 +40,15 @@ export function ProgrammeView({ programme, venue, events }: { programme: Program
     ...(programme.soundtrack?.length ? [`It found ${programme.soundtrack.length} musicians this audience over-indexes on.`] : []),
   ];
   const [copied, setCopied] = useState(false);
+  // The take / reserve / skip line comes from the verdicts themselves, so the summary can never contradict them.
+  const byVerdict = (v: ShortlistNote["verdict"]) => (programme.shortlist_notes ?? []).filter((n) => n.verdict === v).map((n) => n.title);
+  const verdictLine = programme.shortlist_notes?.length ? [
+    byVerdict("programmed").length ? `Book ${byVerdict("programmed").join(", ")}.` : "",
+    byVerdict("featured").length ? `Play ${byVerdict("featured").join(", ")} on record.` : "",
+    byVerdict("reserve").length ? `Hold ${byVerdict("reserve").join(", ")} in reserve.` : "",
+    byVerdict("skip").length ? `Pass on ${byVerdict("skip").join(", ")}.` : "",
+    byVerdict("not_found").length ? `Check the titles of ${byVerdict("not_found").join(", ")}.` : "",
+  ].filter(Boolean).join(" ") : "";
   const md = () => toMarkdown(programme, venue.month, venue.location);
   // Cards in calendar order, whatever order the agent wrote them in.
   const dated = programme.events
@@ -50,7 +59,12 @@ export function ProgrammeView({ programme, venue, events }: { programme: Program
       <header className="panel">
         <p className="eyebrow">{venue.location} · {venue.month}</p>
         <h2>{programme.headline}</h2>
-        {programme.summary?.length ? <ul className="summary">{programme.summary.map((s, i) => <li key={i}>{s}</li>)}</ul> : null}
+        {programme.summary?.length ? (
+          <ul className="summary">
+            {programme.summary.map((s, i) => <li key={i}>{s}</li>)}
+            {verdictLine && <li>{verdictLine}</li>}
+          </ul>
+        ) : null}
         {programme.summary?.length ? (
           <details className="why"><summary>Why these picks</summary><p className="read"><Cite text={programme.audience_read} /></p></details>
         ) : <p className="read"><Cite text={programme.audience_read} /></p>}
@@ -70,7 +84,7 @@ export function ProgrammeView({ programme, venue, events }: { programme: Program
             {programme.shortlist_notes.map((n) => (
               <li key={n.title}>
                 <span className={`verdict ${n.verdict}`}>{VERDICT[n.verdict]}</span>
-                <span><strong>{n.title}</strong> — <Cite text={n.reason} />{n.evidence.length ? <> (<Cite text={n.evidence.join(", ")} />)</> : null}</span>
+                <span><strong>{n.title}</strong> — <Cite text={n.reason} />{n.evidence.length ? <> <Cite text={n.evidence.join(", ")} /></> : null}</span>
               </li>
             ))}
           </ul>
@@ -80,7 +94,7 @@ export function ProgrammeView({ programme, venue, events }: { programme: Program
         {dated.map(({ e, date }, i) => (
           <li key={i} className="panel event">
             <div className="event-head">
-              <span className="when">{e.when}</span>
+              <span className="when">{e.when.replace(/^week\s*\d+\s*[,:–-]?\s*/i, "")}</span>
               <span className={`confidence ${e.confidence}`}>{CONFIDENCE[e.confidence]}</span>
             </div>
             <p className="date">
@@ -103,7 +117,8 @@ export function ProgrammeView({ programme, venue, events }: { programme: Program
           </li>
         ))}
       </ol>
-      {baseline && <WithoutQloo ours={programme} theirs={baseline} second={baselineEvent?.second} city={evidence[0]?.location ?? venue.location} informed={informed} />}
+      {baseline && <WithoutQloo ours={programme} theirs={baseline} second={baselineEvent?.second} city={evidence[0]?.location ?? venue.location}
+        informed={informed} localSeen={evidence.some((c) => c.rows.some((r) => r.local !== null))} profilesSeen={profiles > 0} />}
       {(programme.partners?.length || programme.audience_check) ? (
         <div className="two">
           {programme.partners?.length ? (
@@ -112,7 +127,7 @@ export function ProgrammeView({ programme, venue, events }: { programme: Program
               <p className="viz-sub">Local places whose audiences share your regulars' taste, from Qloo's place data.</p>
               <ul className="partners">
                 {programme.partners.map((p) => (
-                  <li key={p.name}><strong>{p.name}</strong> <span className="muted">{p.kind}{p.address ? ` · ${p.address}` : ""}</span><br /><Cite text={p.idea} />{p.evidence.length ? <> (<Cite text={p.evidence.join(", ")} />)</> : null}</li>
+                  <li key={p.name}><strong>{p.name}</strong> <span className="muted">{p.kind}{p.address ? ` · ${p.address}` : ""}</span><br /><Cite text={p.idea} />{p.evidence.length ? <> <Cite text={p.evidence.join(", ")} /></> : null}</li>
                 ))}
               </ul>
             </section>
@@ -121,7 +136,7 @@ export function ProgrammeView({ programme, venue, events }: { programme: Program
             <section className="panel">
               <h3>Pre-show soundtrack</h3>
               <p className="viz-sub">Musicians this audience over-indexes on, from Qloo: a playlist for the lobby, or a themed night.</p>
-              <p>{programme.soundtrack.map((a) => a.name).join(" · ")} {programme.soundtrack[0]?.evidence.length ? <>(<Cite text={programme.soundtrack[0].evidence.join(", ")} />)</> : null}</p>
+              <p>{programme.soundtrack.map((a) => a.name).join(" · ")} {programme.soundtrack[0]?.evidence.length ? <><Cite text={programme.soundtrack[0].evidence.join(", ")} /></> : null}</p>
             </section>
           ) : null}
           {programme.audience_check ? (

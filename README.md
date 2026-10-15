@@ -16,16 +16,16 @@ Marquee is an agent (Claude) that calls Qloo through the event's supported `qloo
 |---|---|---|
 | Resolve the recent hits | `qloo_describe` | Which Qloo entity "Aftersun" is, when three films share the title. |
 | Discover by taste | `qloo_recommend` with the hits as `signals` and no location | What people who liked these titles gravitate to: the core of the programme. |
-| Check locally | `qloo_rank` of the taste picks with `signal_location` only | Which of the taste picks also score in the venue's city. Code refuses a programme with a taste pick that never went through this check. |
+| Check locally | `qloo_rank` of the taste picks with the hits as signals plus `signal_location`, no audience signal | Your regulars' taste as it plays in the venue's city. A programme with a taste pick that never went through this check is sent back. |
 | Judge what the venue can book | `qloo_rank` of the venue's own shortlist, once on taste and once with the location | The decision the owner actually makes: which of the titles on offer this month suit these regulars, and which suit the city. A resolved title that is not the work the venue meant is marked "check the title", not judged. |
 | Fill broader slots | `qloo_recommend` with `signal_location` and tag filters only | A family matinee or crowd night, labelled as a local crowd-pleaser rather than a pick for this audience. |
 | Find co-promotion partners | `qloo_recommend` with `target_type: "place"`, the hits as signals, `filter_location` and a place-category tag | Bars and cafés in the city whose audiences share the venue's taste: film to cocktail, book to bar. |
-| Check the audience | `qloo_audience_demographics` for the lead picks | Whether the picks' audiences lean towards the venue's own audience (kept out of the local ranking, so "in the city" means the city alone). |
+| Check the audience | `qloo_audience_demographics` for the lead picks | Whether the picks' audiences lean towards the venue's own audience (kept out of the local ranking, so the city ranking is about taste and place, not age). |
 | Suggest a soundtrack | `qloo_recommend` with `target_type: "artist"` and the hits as signals | Musicians the audience over-indexes on, for a pre-show playlist or a themed night. |
 | Show the difference | none: the same model, with the same programme rules, plans twice with no tools | Where the plans differ beyond the run-to-run noise, the night each plan pushes, and Marquee's cited reason for each differing verdict. The agent's only extra instructions are about reading Qloo's data. |
 | Check timing and place (optional) | `qloo_trends`, `qloo_where_popular` | Available to the agent for a rising title or where in the city an audience sits; trend series whose values never move are flagged as missing data. |
 
-Taste comes first because of what the live data showed. Asked for films like *Past Lives*, *Perfect Days* and *Aftersun* with Madrid as the location plus the venue's audience and two mood tags, Qloo returned the city's most popular titles: every one of the twenty had a catalogue popularity above 0.97. With no location, it returns twenty arthouse dramas, all less widely known; the scores are tight either way, so popularity, not the spread, is what separates the lists. So Marquee uses taste to find candidates and the city to test them.
+Taste comes first because of what the live data showed. Asked for films like *Past Lives*, *Perfect Days* and *Aftersun* with Madrid as the location plus the venue's audience and two mood tags, Qloo returned the city's most popular titles: it led with blockbusters such as *Barbie* and *Spider-Man*. With no location, it returns twenty arthouse dramas. Both lists are made of widely known titles; what separates them is the kind of film. So Marquee uses taste to find candidates and the city to test them.
 
 ## What the venue sees
 
@@ -42,7 +42,7 @@ Every event cites the calls that support it (q1, q2, …), and each citation lin
 
 ## From request to result
 
-One live run, from 15 October 2026, step by step: the cinema sample the demo opens on. It shows the requests and the agent's decisions; Qloo's results stay on the server (its terms keep response data out of public repositories), and the demo replays this run, results included.
+One live run, from 15 October 2026, step by step: the cinema sample the demo opens on. It shows the requests and the agent's decisions. Qloo's results are cached privately on the server and shown in the app's research trail, never stored in this repository (Qloo's terms keep response data out of public repositories); the demo replays this run, results included.
 
 **Input.** A cinema in Lavapiés, Madrid; recent hits *Past Lives*, *Perfect Days* and *Aftersun*; audience "people 25-34"; eight events in November 2026, Thursday to Sunday evenings, one family matinee; and ten films it can book: *Anora*, *The Brutalist*, *Conclave*, *The Substance*, *Robot Dreams*, *Flow*, *Society of the Snow*, *Wicked*, *Inside Out 2* and *Challengers*.
 
@@ -56,15 +56,15 @@ One live run, from 15 October 2026, step by step: the cinema sample the demo ope
 | q8 | `qloo_recommend` `{target_type: "artist", signals: [3 hits], limit: 10}` | ok, 10 musicians | Five for the pre-show soundtrack. |
 | q9 | `qloo_rank` of the bookable films on taste, no location | ok, all ten | The shortlist's taste order. |
 | q10, q11 | the bookable films and the discovery picks with `signal_location: "Lavapiés, Madrid"` | no results | The neighbourhood does not work as a ranking signal, so it used the city. |
-| q12 | the bookable films with `signal_location: "Madrid"`, no audience signal | ok, six of ten ranked | The shortlist's place in the city; the other four have no signal there, which it did not count against them. |
-| q13 | the discovery picks with `signal_location: "Madrid"` | ok, two ranked | Both programmed, one as a high-confidence night. |
-| q14, q15 | `qloo_audience_demographics` for two lead picks | ok | Put the film that skews older in an early-evening double bill rather than a headline night, and pitched the push night at the younger end of 25-34. |
+| q12 | the bookable films with the hits as signals and `signal_location: "Madrid"`, no audience signal | ok, six of ten ranked | The shortlist's taste as it plays in Madrid; the other four have no signal there, which it did not use against them. |
+| q13 | the discovery picks, same signals and city | ok, two ranked | Programmed the first as a high-confidence night; the second was not programmed. |
+| q14, q15 | `qloo_audience_demographics` for two picks | one profile | Sold the film that skews older as a Sunday double bill to a broad crowd rather than a lead for 25-34s, and said the other had no profile. |
 
-**Programme.** Eight dated events, Thursday to Sunday: six from the venue's list and two discovery picks marked "check availability". The family matinee (dubbed) is at noon on a Sunday; the shortlisted title that tops the Madrid ranking gets the 22:30 late show; two dialogue-free animations make a Saturday double bill. Seven bookable films are programmed, two held in reserve and one skipped. Partners: three places in Centro, near the venue. Soundtrack: five musicians.
+**Programme.** Eight dated events, Thursday to Sunday: seven from the venue's list and one discovery pick marked "check availability". The push night is the Saturday that starts Madrid's 9 November holiday weekend; the shortlisted title that tops the Madrid ranking gets a 22:30 late show; two dialogue-free animations make a Sunday double bill; the family matinee is dubbed. Eight bookable films are programmed, one held in reserve and one skipped. Partners: three places in Centro, near the venue. Soundtrack: five musicians.
 
-**Without Qloo.** The same model, with the same programme rules and no Qloo, planned the month twice. Both runs programmed eight bookable films plus a title from outside the list, but not the same one, and each chose a different night to push from Marquee's. Only the Qloo plan chose its two discovery picks and the family matinee it booked.
+**Without Qloo.** The same model, with the same programme rules and no Qloo, planned the month twice. Both runs programmed eight bookable films, including one Marquee holds in reserve, and each added a different title from outside the list; neither chose Marquee's discovery pick or its dubbed family matinee, and both pushed a different night from Marquee's.
 
-**Cost.** Fifteen Qloo calls, about 108,000 input tokens (66% read from the prompt cache) and 21,000 output tokens, both control runs included: $0.31 of Claude usage. A run costs about $0.22–0.33.
+**Cost.** Fifteen Qloo calls, about 108,000 input tokens (66% read from the prompt cache) and 18,000 output tokens, both control runs included: $0.28 of Claude usage. A run costs about $0.18–0.33.
 
 ## What we learned
 
@@ -102,7 +102,7 @@ Keys stay on the server: the Qloo key reaches only the `qloo mcp` child process,
 - Scores from separate Qloo calls are not on a common scale. Marquee never ranks titles across calls, and its taste-versus-city chart compares positions within each ranking, not scores.
 - Qloo ranked none of the ten 2025 films we tried (in October 2026), though it does score some 2025 titles, and it matched some 2025 books to the wrong work; plans for brand-new titles rest on the agent's judgement, and it says so.
 - Popularity is how widely known a title is in Qloo's catalogue; it says nothing about availability, and Marquee uses it only as a hint of an act's fee.
-- Neighbourhoods such as Lavapiés and Peckham return nothing as a ranking signal, so rankings use the city and say so; they do work as a place filter, so partners can be local. Brooklyn resolves either way.
+- Neighbourhoods such as Lavapiés, Peckham and Brooklyn return nothing as a ranking signal, so rankings use the city (New York for Brooklyn) and say so; they do work as a place filter, so partners can be local.
 - Qloo has local data for fewer niche titles than popular ones: in Madrid it scored two of ten arthouse films, in London eight of ten jazz artists. A taste pick without local data is shown as such, not dropped.
 - Qloo trend data on the event API needs a window of about six months or more and does not cover books, so bookshop programmes skip the momentum check.
 - The agent's formats, pairings and dates are its own judgement, and the app labels them that way.

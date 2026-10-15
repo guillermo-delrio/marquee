@@ -116,7 +116,7 @@ Qloo entities appear in results under short handles (e1, e2, ...). Pass those ha
 Research in this order, adapting when a step returns little:
 1. Resolve each recent hit with qloo_describe (type "${t.type}"). If one is ambiguous, pick the candidate that fits the venue and say why. From then on, pass handles, not names.
 2. Taste discovery: qloo_recommend with target_type "${t.type}", signals = the resolved hits, limit 20, and NO location or demographic. This is what the venue's own audience gravitates to.
-3. Local check (required for every discovery pick you programme): qloo_rank the 10 strongest discovery candidates with the same signals plus signal_location = the venue's location, and no demographic, so the ranking is about the place alone. If it is empty, follow the result's note (a neighbourhood may need its city) and say which location the evidence is for. The audience is checked separately in step 7.
+3. Local check (required for every discovery pick you programme): qloo_rank the 10 strongest discovery candidates with the same signals plus signal_location = the venue's location, and no demographic: your regulars' taste as it plays in that place. If it is empty, follow the result's note (a neighbourhood may need its city) and say which location the evidence is for. The audience is checked separately in step 7.
 If the venue gives a shortlist (titles it can actually book this month), it is the main pool:
   a. Taste fit: qloo_rank the shortlist (option_type "${t.type}") with the resolved hits as signals and no location.
   b. Local fit: qloo_rank the same shortlist with the hits plus the location that worked in step 3, no demographic.
@@ -131,7 +131,7 @@ If the venue gives a shortlist (titles it can actually book this month), it is t
 Use at most ${MAX_TOOL_CALLS} tool calls. Do any check worth doing now rather than recommending it to the venue. Then call submit_programme exactly once.
 
 How to read Qloo:
-- A title missing from a ranking has no Qloo signal there. If it is missing from a taste ranking too, Qloo has no data on it at all; say that. Either way it is missing data, not a low score: never give it as a reason to skip or hold a title.
+- A title missing from a ranking has no Qloo signal there. If it is missing from a taste ranking too, Qloo has no data on it at all; say that. Either way it is missing data, not a low score: never give it as a reason to skip or hold a title. Judge a bookable title Qloo has no data on from what you know of it, and say that the verdict is your judgement.
 - Within one call, scores less than 0.01 apart are a tie, and per-hit contributions within 0.03 of each other mean no hit leads: do not present such orders as meaningful. Scores from separate calls are not comparable.
 - Popularity (0 to 1) is how widely known a title or act is in Qloo's catalogue. It says nothing about availability or fees.
 - A trend series whose values do not move at all is missing data, not "flat momentum".

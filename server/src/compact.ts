@@ -15,7 +15,8 @@ const MAX_TEXT = 220;
 function trim(value: unknown): unknown {
   if (typeof value === "number") return Number.isInteger(value) ? value : Number(value.toFixed(3));
   if (typeof value === "string") {
-    const s = decodeEntities(value);
+    // Qloo writes some names with typographic hyphens (U+2010): show them as plain hyphens.
+    const s = decodeEntities(value).replace(/[\u2010-\u2013]/g, "-");
     return s.length > MAX_TEXT ? `${s.slice(0, MAX_TEXT)}…` : s;
   }
   if (Array.isArray(value)) return value.map(trim);

@@ -17,14 +17,14 @@ export function TasteVsPlace({ c }: { c: Comparison }) {
   return (
     <figure className="panel viz">
       <figcaption>
-        <h3>{c.kind === "shortlist" ? "Your shortlist: taste vs. " : "Taste picks vs. "}{city}</h3>
+        <h3>{c.kind === "shortlist" ? "Your shortlist" : "Taste picks"}: your regulars' taste, overall and in {city}</h3>
         <p className="viz-sub">
           Position among these {n} titles by your regulars' taste (<Cite text={c.tasteCall} />) and by affinity in {city} (<Cite text={c.localCall} />).
           {withLocal < n && ` Qloo ranks ${withLocal} of ${n} in ${city}; the rest are not ranked there, which is not a low score.`}
         </p>
         <ul className="viz-legend" aria-label="Legend">
           <li><span className="mark ring" aria-hidden /> By taste</li>
-          <li><span className="mark dot" aria-hidden /> In {city}</li>
+          <li><span className="mark dot" aria-hidden /> Taste in {city}</li>
           <li><span className="tag">in programme</span></li>
         </ul>
       </figcaption>
@@ -52,7 +52,7 @@ export function TasteVsPlace({ c }: { c: Comparison }) {
       <details className="viz-table">
         <summary>Table</summary>
         <table>
-          <thead><tr><th scope="col">Title</th><th scope="col">By taste</th><th scope="col">In {city}</th><th scope="col">In programme</th></tr></thead>
+          <thead><tr><th scope="col">Title</th><th scope="col">By taste</th><th scope="col">Taste in {city}</th><th scope="col">In programme</th></tr></thead>
           <tbody>
             {c.rows.map((r) => (
               <tr key={r.id}><td>{r.name}</td><td>{ord(r.taste)}</td><td>{r.local ? ord(r.local) : "not ranked"}</td><td>{r.programmed ? "yes" : ""}</td></tr>

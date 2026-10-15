@@ -24,7 +24,8 @@ export interface Comparison {
 
 /** Qloo stores some names HTML-escaped ("Writers &amp; Lovers"); show and compare them decoded. */
 const decodeEntities = (s: string) =>
-  s.replace(/&(amp|quot|#39|apos|lt|gt);/g, (_, e: string) => ({ amp: "&", quot: '"', "#39": "'", apos: "'", lt: "<", gt: ">" })[e] ?? _);
+  s.replace(/&(amp|quot|#39|apos|lt|gt);/g, (_, e: string) => ({ amp: "&", quot: '"', "#39": "'", apos: "'", lt: "<", gt: ">" })[e] ?? _)
+    .replace(/[\u2010-\u2013]/g, "-");
 
 const norm = (s: string) => s.normalize("NFKC").toLowerCase().replace(/[‐-―]/g, "-").replace(/\s+/g, " ").trim();
 const itemsOf = (raw: unknown): Item[] => {

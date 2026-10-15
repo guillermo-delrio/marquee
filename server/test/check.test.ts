@@ -81,16 +81,16 @@ describe("verdict rules", () => {
       { title: "Old Joy", verdict: "reserve", reason: "Fits the taste but no slot is left.", evidence: [] },
     ] }, shortlisted)).toEqual([]);
   });
-  it("rejects missing data given as a reason to skip, but lets an unknown title wait in reserve", () => {
+  it("rejects missing data given as a reason to skip or hold", () => {
     const problems = checkProgramme({ ...programme(two), shortlist_notes: [
       { title: "Paterson", verdict: "programmed", reason: "", evidence: [] },
-      { title: "Old Joy", verdict: "skip", reason: "Low taste fit and absent from the Madrid ranking.", evidence: [] },
+      { title: "Old Joy", verdict: "skip", reason: "It is absent from the Madrid ranking.", evidence: [] },
     ] }, shortlisted).join("\n");
     expect(problems).toMatch(/"Old Joy": the reason rests on missing data \("absent"\)/);
     expect(checkProgramme({ ...programme(two), shortlist_notes: [
       { title: "Paterson", verdict: "programmed", reason: "", evidence: [] },
       { title: "Old Joy", verdict: "reserve", reason: "Qloo has no data on it, so it waits as a swap-in.", evidence: [] },
-    ] }, shortlisted)).toEqual([]);
+    ] }, shortlisted).join("\n")).toMatch(/"Old Joy": the reason rests on missing data/);
   });
 });
 
@@ -99,5 +99,31 @@ describe("local check of taste picks", () => {
     const p = programme([event({ source: "taste", featured: ["Paterson"] }), event({ featured: ["Columbus"], date: "2026-11-07", when: "Week 1, Saturday evening", source: "taste" })]);
     const problems = checkProgramme(p, { ...known, checkedLocally: new Set(["Paterson"]) });
     expect(problems).toEqual([expect.stringMatching(/"Columbus" is a taste pick that was never checked in the city/)]);
+  });
+});
+
+describe("one night per name", () => {
+  it("flags a title or act booked on two nights", () => {
+    const p = programme([event(), event({ date: "2026-11-07", when: "Week 1, Saturday evening" })]);
+    expect(checkProgramme(p, known)).toEqual([expect.stringMatching(/"Paterson" appears in events 1 and 2/)]);
+  });
+});
+
+describe("missing data as the only reason", () => {
+  const shortlisted = { ...known, shortlist: ["Paterson", "Old Joy"] };
+  const two = [event({ source: "shortlist" }), event({ featured: ["Columbus"], date: "2026-11-07", when: "Week 1, Saturday evening" })];
+  const note = (verdict: "reserve" | "featured" | "skip", reason: string) => checkProgramme({ ...programme(two), shortlist_notes: [
+    { title: "Paterson", verdict: "programmed", reason: "", evidence: [] }, { title: "Old Joy", verdict, reason, evidence: [] },
+  ] }, shortlisted);
+  it("accepts a real reason that mentions missing data as context", () => {
+    expect(note("reserve", "No slot is left this month; Qloo has no data on it either way.")).toEqual([]);
+  });
+  it("rejects a downgrade to played-not-booked that rests on missing data alone", () => {
+    const withOldJoy = [event({ source: "shortlist" }), event({ featured: ["Old Joy"], date: "2026-11-07", when: "Week 1, Saturday evening" })];
+    const problems = checkProgramme({ ...programme(withOldJoy), shortlist_notes: [
+      { title: "Paterson", verdict: "programmed", reason: "", evidence: [] },
+      { title: "Old Joy", verdict: "featured", reason: "A taste fit but no London signal, so played rather than booked.", evidence: [] },
+    ] }, { ...known, names: new Set([...known.names, "Old Joy"]), shortlist: ["Paterson", "Old Joy"] });
+    expect(problems.join("\n")).toMatch(/rests on missing data/);
   });
 });

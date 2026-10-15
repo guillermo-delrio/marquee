@@ -48,7 +48,7 @@ h1 { font-size: 1.9rem; letter-spacing: -0.02em; }
 h2 { font-size: 1.15rem; }
 h3 { font-size: 1.05rem; }
 small { color: var(--ink-3); font-weight: 400; }
-a.cite {
+a.cite { white-space: nowrap;
   display: inline-block; padding: 0 0.35em; margin: 0 0.1em; border-radius: 6px;
   background: var(--accent-soft); color: var(--accent); font: 600 0.8em ui-monospace, monospace; text-decoration: none;
 }
@@ -129,6 +129,7 @@ button { font: inherit; }
 .step { border-left: 3px solid var(--line); padding: 4px 0 4px 12px; }
 .step.ok { border-color: var(--ok); }
 .step.partial { border-color: var(--warn); }
+.step.retry { border-color: var(--line); }
 .step.error { border-color: var(--bad); }
 .step.pending { border-color: var(--accent); }
 .step-head { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }

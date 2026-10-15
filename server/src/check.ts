@@ -21,8 +21,10 @@ export function namesIn(value: unknown, into = new Set<string>()): Set<string> {
   return into;
 }
 
-/** A reason that treats a title's absence from a ranking as evidence against it (checked for skips). */
-const MISSING_AS_REASON = /\b(absent|missing|not ranked|isn't ranked|no (local |city )?(signal|data))\b/i;
+/** A reason that treats a title's absence from a ranking as evidence against it. */
+/** A reason of its own beside the missing data: no slot, room size, runtime, family fit, rights, a weak taste fit... */
+const OTHER_REASON = /\b(slot|room|space|runtime|long|length|family|big|fee|budget|rights|availab|repeat|clash|weak|low|weaker|lowest|tie)\w*/i;
+const MISSING_AS_REASON = /\b(absent|missing|not ranked|isn't ranked|no(?: [\w-]+){0,2} (?:signal|data))\b/i;
 
 /**
  * Rules the prompt states and code enforces: the number of events, dates inside the month on the weekday named,
@@ -49,8 +51,9 @@ export function checkProgramme(
             ? `"${title}" is in the programme but its verdict is ${note.verdict}; use programmed (booked) or featured (played, not booked).`
             : `"${title}" has the verdict ${note.verdict} but no event features it.`);
         }
-        // Holding an unknown in reserve is fair; skipping a title because Qloo has no signal on it is not.
-        if (note.verdict === "skip" && MISSING_AS_REASON.test(note.reason)) {
+        // Missing data never benches a title the venue can book: judge it on what is known, or say so and programme it.
+        const benched = note.verdict === "skip" || note.verdict === "reserve" || (note.verdict === "featured" && inProgramme);
+        if (benched && MISSING_AS_REASON.test(note.reason) && !OTHER_REASON.test(note.reason.replace(MISSING_AS_REASON, ""))) {
           problems.push(`"${title}": the reason rests on missing data ("${note.reason.match(MISSING_AS_REASON)![0]}"); missing is not a low score. Give a reason from the data Qloo did return, or the programme.`);
         }
       }
@@ -60,6 +63,13 @@ export function checkProgramme(
   for (const partner of p.partners ?? []) {
     if (!names.has(normalName(partner.name))) problems.push(`Partner "${partner.name}" does not appear in any Qloo result; suggest only places Qloo returned.`);
   }
+  // One night per name: the same title or act on two nights is a repeat, not a month.
+  const seen = new Map<string, number>();
+  p.events.forEach((e, i) => e.featured.forEach((f) => {
+    const k = normalName(f);
+    if (seen.has(k)) problems.push(`"${f}" appears in events ${seen.get(k)! + 1} and ${i + 1}; give each title or act one night.`);
+    else seen.set(k, i);
+  }));
   p.events.forEach((e, i) => {
     const at = `Event ${i + 1} ("${e.title}")`;
     for (const f of e.featured) if (!names.has(normalName(f))) problems.push(`${at}: "${f}" does not appear in any Qloo result; feature only returned titles, named as returned.`);
