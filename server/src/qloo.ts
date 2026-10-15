@@ -38,6 +38,8 @@ export async function withRetry(call: () => Promise<QlooEnvelope>, wait: (ms: nu
   return envelope;
 }
 
+const START_TIMEOUT_MS = 180_000;
+
 /** The readiness tool is for operators, not for the agent. */
 const HIDDEN_TOOLS = new Set(["qloo_capabilities"]);
 
@@ -55,8 +57,16 @@ async function connectMcp(apiKey: string): Promise<QlooClient> {
     QLOO_BASE_URL: HACKATHON_API,
     QLOO_TRUSTED_BASE_URL: HACKATHON_API,
   };
-  await client.connect(new StdioClientTransport({ command: QLOO_BIN, args: ["mcp"], env }));
-  const listed = await client.listTools();
+  // The child's own error output goes to the server log, prefixed, so a hosted failure can be diagnosed.
+  const transport = new StdioClientTransport({ command: QLOO_BIN, args: ["mcp"], env, stderr: "pipe" });
+  transport.stderr?.on("data", (chunk: Buffer) => {
+    for (const line of chunk.toString().split("\n")) if (line.trim()) console.error(`[qloo mcp] ${line.slice(0, 500)}`);
+  });
+  const started = Date.now();
+  // A fresh hosted instance can take far longer than the 60 s default to start the harness the first time.
+  await client.connect(transport, { timeout: START_TIMEOUT_MS });
+  const listed = await client.listTools(undefined, { timeout: START_TIMEOUT_MS });
+  console.log(`qloo mcp ready in ${Date.now() - started} ms`);
   const tools: QlooTool[] = listed.tools
     .filter((t) => !HIDDEN_TOOLS.has(t.name))
     .map((t) => ({ name: t.name, description: t.description ?? "", inputSchema: t.inputSchema as Record<string, unknown> }));

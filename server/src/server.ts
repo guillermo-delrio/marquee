@@ -225,5 +225,13 @@ export function createApp() {
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
   const port = Number(process.env.PORT ?? 8787);
+  // Start the Qloo harness once before taking traffic: on a fresh hosted instance its first start is slow, and a
+  // visitor's first plan should not pay for it.
+  try {
+    const qloo = await connectQloo();
+    await qloo.close();
+  } catch (err) {
+    console.error("Qloo warm-up failed; plans will connect on demand:", err);
+  }
   createApp().listen(port, () => console.log(`Marquee on http://localhost:${port}`));
 }
