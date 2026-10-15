@@ -107,7 +107,7 @@ export function VenueForm({ initial, busy, onSubmit }: { initial?: VenueInput; b
       </div>
       <label>
         Constraints <small>optional</small>
-        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} maxLength={240}
+        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={4} maxLength={240}
           placeholder="e.g. Thursday to Sunday evenings; one family matinee" />
       </label>
       <button className="primary" disabled={!ready}>{busy ? "Researching…" : "Plan the month"}</button>

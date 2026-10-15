@@ -4,7 +4,7 @@ import { dateFor, toIcs, toMarkdown } from "./calendar";
 import { Cite } from "./Cite";
 import { comparisons } from "./evidence";
 import { TasteVsPlace } from "./TasteVsPlace";
-import { featuredVerb, soundtrackTitle, verdictLabels } from "./labels";
+import { featuredVerb, heldLabel, soundtrackTitle, verdictLabels } from "./labels";
 import { WithoutQloo } from "./WithoutQloo";
 import type { AgentEvent, Programme, ProgrammeEvent, ShortlistNote, VenueInput } from "./types";
 
@@ -49,7 +49,7 @@ export function ProgrammeView({ programme, venue, events }: { programme: Program
     byVerdict("featured").length ? `${featuredVerb(venue.kind)} ${byVerdict("featured").join(", ")}.` : "",
     byVerdict("reserve").length ? `Hold ${byVerdict("reserve").join(", ")} in reserve.` : "",
     byVerdict("skip").length ? `Pass on ${byVerdict("skip").join(", ")}.` : "",
-    byVerdict("not_found").length ? `Check the titles of ${byVerdict("not_found").join(", ")}.` : "",
+    byVerdict("not_found").length ? `Check the title${byVerdict("not_found").length === 1 ? "" : "s"} ${byVerdict("not_found").join(", ")}.` : "",
   ].filter(Boolean).join(" ") : "";
   const md = () => toMarkdown(programme, venue.month, venue.location);
   // Cards in calendar order, whatever order the agent wrote them in.
@@ -85,7 +85,7 @@ export function ProgrammeView({ programme, venue, events }: { programme: Program
           <ul>
             {programme.shortlist_notes.map((n) => (
               <li key={n.title}>
-                <span className={`verdict ${n.verdict}`}>{VERDICT[n.verdict]}</span>
+                <span className={`verdict ${n.verdict}`}>{VERDICT[n.verdict]}{n.held_for && n.verdict !== "programmed" && <span className="held">{heldLabel(n.held_for, venue.location.split(",").pop()!.trim())}</span>}</span>
                 <span><strong>{n.title}</strong> — <Cite text={n.reason} />{n.evidence.length ? <> <Cite text={n.evidence.join(", ")} /></> : null}</span>
               </li>
             ))}
@@ -120,7 +120,8 @@ export function ProgrammeView({ programme, venue, events }: { programme: Program
         ))}
       </ol>
       {baseline && <WithoutQloo labels={VERDICT} ours={programme} theirs={baseline} second={baselineEvent?.second} city={evidence[0]?.location ?? venue.location}
-        informed={informed} localSeen={evidence.some((c) => c.rows.some((r) => r.local !== null))} profilesSeen={profiles > 0} />}
+        informed={informed} localSeen={evidence.some((c) => c.rows.some((r) => r.local !== null))} profilesSeen={profiles > 0}
+        scored={evidence.flatMap((c) => c.rows.map((r) => r.name))} />}
       {(programme.partners?.length || programme.audience_check) ? (
         <div className="two">
           {programme.partners?.length ? (

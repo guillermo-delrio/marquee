@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { checkProgramme } from "../src/check.js";
-import type { Programme, ProgrammeEvent } from "../src/types.js";
+import { checkProgramme, venueBands } from "../src/check.js";
+import type { Programme, ProgrammeEvent, ShortlistNote } from "../src/types.js";
 
 const event = (over: Partial<ProgrammeEvent> = {}): ProgrammeEvent => ({
   title: "Night", when: "Week 1, Thursday evening", date: "2026-11-05", format: "Screening", featured: ["Paterson"],
@@ -77,20 +77,9 @@ describe("verdict rules", () => {
   const two = [event({ source: "shortlist" }), event({ featured: ["Columbus"], date: "2026-11-07", when: "Week 1, Saturday evening" })];
   it("accepts featured for a title played but not booked", () => {
     expect(checkProgramme({ ...programme(two), shortlist_notes: [
-      { title: "Paterson", verdict: "featured", reason: "A listening night: too big to book live.", evidence: [] },
-      { title: "Old Joy", verdict: "reserve", reason: "Fits the taste but no slot is left.", evidence: [] },
+      { title: "Paterson", verdict: "featured", reason: "A listening night: too big to book live.", evidence: [], held_for: "format" },
+      { title: "Old Joy", verdict: "reserve", reason: "Fits the taste but no slot is left.", evidence: [], held_for: "slots" },
     ] }, shortlisted)).toEqual([]);
-  });
-  it("rejects missing data given as a reason to skip or hold", () => {
-    const problems = checkProgramme({ ...programme(two), shortlist_notes: [
-      { title: "Paterson", verdict: "programmed", reason: "", evidence: [] },
-      { title: "Old Joy", verdict: "skip", reason: "It is absent from the Madrid ranking.", evidence: [] },
-    ] }, shortlisted).join("\n");
-    expect(problems).toMatch(/"Old Joy": the reason rests on missing data \("absent"\)/);
-    expect(checkProgramme({ ...programme(two), shortlist_notes: [
-      { title: "Paterson", verdict: "programmed", reason: "", evidence: [] },
-      { title: "Old Joy", verdict: "reserve", reason: "Qloo has no data on it, so it waits as a swap-in.", evidence: [] },
-    ] }, shortlisted).join("\n")).toMatch(/"Old Joy": the reason rests on missing data/);
   });
 });
 
@@ -109,22 +98,48 @@ describe("one night per name", () => {
   });
 });
 
-describe("missing data as the only reason", () => {
-  const shortlisted = { ...known, shortlist: ["Paterson", "Old Joy"] };
+describe("why a title is held, checked against the rankings", () => {
+  // Paterson is booked; Old Joy beats it on taste (q1) and no city ranking scored it.
+  const shortlisted = { ...known, shortlist: ["Paterson", "Old Joy"],
+    tasteScores: new Map([["Old Joy", { score: 0.97, callId: "q1" }], ["Paterson", { score: 0.94, callId: "q1" }]]), localCalls: new Map([["Paterson", "q2"]]) };
   const two = [event({ source: "shortlist" }), event({ featured: ["Columbus"], date: "2026-11-07", when: "Week 1, Saturday evening" })];
-  const note = (verdict: "reserve" | "featured" | "skip", reason: string) => checkProgramme({ ...programme(two), shortlist_notes: [
-    { title: "Paterson", verdict: "programmed", reason: "", evidence: [] }, { title: "Old Joy", verdict, reason, evidence: [] },
-  ] }, shortlisted);
-  it("accepts a real reason that mentions missing data as context", () => {
-    expect(note("reserve", "No slot is left this month; Qloo has no data on it either way.")).toEqual([]);
+  const note = (held_for: ShortlistNote["held_for"], over: Partial<Parameters<typeof checkProgramme>[1]> = {}) => checkProgramme({ ...programme(two), shortlist_notes: [
+    { title: "Paterson", verdict: "programmed", reason: "", evidence: [] },
+    { title: "Old Joy", verdict: "reserve", reason: "The slots went to acts that also scored in the city.", evidence: [], held_for },
+  ] }, { ...shortlisted, ...over }).join("\n");
+  it("asks what holds a title back", () => {
+    expect(note(undefined)).toMatch(/"Old Joy" \(reserve\) has no held_for/);
   });
-  it("rejects a downgrade to played-not-booked that rests on missing data alone", () => {
-    const withOldJoy = [event({ source: "shortlist" }), event({ featured: ["Old Joy"], date: "2026-11-07", when: "Week 1, Saturday evening" })];
-    const problems = checkProgramme({ ...programme(withOldJoy), shortlist_notes: [
-      { title: "Paterson", verdict: "programmed", reason: "", evidence: [] },
-      { title: "Old Joy", verdict: "featured", reason: "A taste fit but no London signal, so played rather than booked.", evidence: [] },
-    ] }, { ...known, names: new Set([...known.names, "Old Joy"]), shortlist: ["Paterson", "Old Joy"] });
-    expect(problems.join("\n")).toMatch(/rests on missing data/);
+  it("rejects missing local data passed off as slots, whatever the wording", () => {
+    expect(note("slots")).toMatch(/"Old Joy" out-ranks booked "Paterson" on taste \(q1\), so slots is not why it is held, and it has no local data/);
+    expect(note("taste")).toMatch(/out-ranks booked "Paterson"/);
+    expect(note("local")).toMatch(/no city ranking scored it/);
+  });
+  it("accepts a hold for the title itself, or a real local reason", () => {
+    expect(note("format")).toBe("");
+    expect(note("rights")).toBe("");
+    expect(note("format", { kind: "music_bar" })).toMatch(/format is not a reason at a music bar/);
+    expect(note("size")).toMatch(/gave no popularity/);
+    expect(note("size", { tasteScores: new Map([["Old Joy", { score: 0.97, callId: "q1", popularity: 0.99 }], ["Paterson", { score: 0.94, callId: "q1", popularity: 0.6 }]]) })).toBe("");
+    expect(note("same_act")).toMatch(/same_act_as names no act in the programme/);
+    expect(note("local", { localCalls: new Map([["Paterson", "q2"], ["Old Joy", "q2"]]) })).toBe("");
+  });
+  it("treats a near tie as no ranking difference", () => {
+    expect(note("slots", { tasteScores: new Map([["Old Joy", { score: 0.945, callId: "q1" }], ["Paterson", { score: 0.94, callId: "q1" }]]) })).toBe("");
+  });
+  it("does not let a title with no taste data be held for taste", () => {
+    expect(note("taste", { tasteScores: new Map([["Paterson", { score: 0.94, callId: "q1" }]]) })).toMatch(/taste ranking did not score it/);
+  });
+});
+
+describe("partner citations", () => {
+  it("rejects a partner that cites a call which did not return it", () => {
+    const p = { ...programme([event(), event({ featured: ["Columbus"], date: "2026-11-07", when: "Week 1, Saturday evening" })]),
+      partners: [{ name: "Jalopy", kind: "cafe", idea: "", evidence: ["q2"] }] };
+    const names = new Set([...known.names, "Jalopy"]);
+    expect(checkProgramme(p, { ...known, names, callNames: new Map([["q1", new Set(["jalopy"])], ["q2", new Set(["paterson"])]]) }).join("\n"))
+      .toMatch(/Partner "Jalopy" cites q2, which did not return it/);
+    expect(checkProgramme({ ...p, partners: [{ ...p.partners[0], evidence: ["q1"] }] }, { ...known, names, callNames: new Map([["q1", new Set(["jalopy"])]]) })).toEqual([]);
   });
 });
 
@@ -153,5 +168,36 @@ describe("round 5 checks", () => {
     const p = { ...programme([event({ source: "shortlist", format: "Listening session, records played" }), event({ featured: ["Columbus"], date: "2026-11-07", when: "Week 1, Saturday evening" })]),
       shortlist_notes: [{ title: "Paterson", verdict: "programmed" as const, reason: "", evidence: [] }, { title: "Old Joy", verdict: "reserve" as const, reason: "No slot.", evidence: [] }] };
     expect(checkProgramme(p, { ...shortlisted, kind: "music_bar" }).join("\n")).toMatch(/"Paterson" is marked programmed but only appears on a records night/);
+  });
+});
+
+describe("holds for audience", () => {
+  const base = { ...known, shortlist: ["Paterson", "Old Joy"], audience: "people 25-34",
+    tasteScores: new Map([["Old Joy", { score: 0.97, callId: "q1" }], ["Paterson", { score: 0.94, callId: "q1" }]]) };
+  const two = [event({ source: "shortlist" }), event({ featured: ["Columbus"], date: "2026-11-07", when: "Week 1, Saturday evening" })];
+  const hold = (ages: Map<string, Record<string, number>>) => checkProgramme({ ...programme(two), shortlist_notes: [
+    { title: "Paterson", verdict: "programmed", reason: "", evidence: [] },
+    { title: "Old Joy", verdict: "reserve", reason: "Its audience is older than the venue's.", evidence: ["q2"], held_for: "audience" },
+  ] }, { ...base, ages }).join("\n");
+  it("needs an audience profile for the held title", () => {
+    expect(hold(new Map())).toMatch(/no audience profile was fetched/);
+  });
+  it("rejects a hold when the held title fits the venue's ages better than a weaker booked one", () => {
+    expect(hold(new Map([["Old Joy", { "25_to_29": -0.1, "30_to_34": -0.02 }], ["Paterson", { "25_to_29": -0.13, "30_to_34": -0.1 }]])))
+      .toMatch(/fits the venue's people 25-34 as well as or better than booked "Paterson"/);
+    expect(hold(new Map([["Old Joy", { "25_to_29": -0.3 }]]))).toMatch(/booked "Paterson", which it out-ranks on taste, has no audience profile/);
+    expect(hold(new Map([["Old Joy", { "25_to_29": -0.3, "30_to_34": -0.2 }], ["Paterson", { "25_to_29": 0.1, "30_to_34": 0 }]]))).toBe("");
+  });
+  it("reads the venue's age bands from its audience", () => {
+    expect(venueBands("people 25-34")).toEqual(["25_to_29", "30_to_34"]);
+    expect(venueBands("students")).toEqual([]);
+  });
+});
+
+describe("acts that share members", () => {
+  it("allows one night between a band and its leader's project", () => {
+    const p = { ...programme([event(), event({ featured: ["Columbus"], date: "2026-11-07", when: "Week 1, Saturday evening" })]),
+      shortlist_notes: [{ title: "Paterson", verdict: "programmed" as const, reason: "", evidence: [], same_act_as: ["Columbus"] }] };
+    expect(checkProgramme(p, known).join("\n")).toMatch(/"Paterson" and "Columbus" share members/);
   });
 });

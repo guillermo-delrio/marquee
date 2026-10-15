@@ -1,4 +1,4 @@
-import type { Programme } from "./types.js";
+import type { Programme, ShortlistNote } from "./types.js";
 
 const DAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
 
@@ -25,9 +25,16 @@ export function namesIn(value: unknown, into = new Set<string>()): Set<string> {
 const COUNT = /\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\d+)\s+(?:[a-z-]+\s+)?(picks?|events?|nights?|evenings?|titles?|films?|books?|acts?|shows?|screenings?|sets?)\b/i;
 const RECORDS = /\b(listening|records?|vinyl|dj)\b/i;
 
-/** A reason of its own beside the missing data: no slot, room size, runtime, family fit, rights, a weak taste fit... */
-const OTHER_REASON = /\b(slot|room|space|runtime|long|length|family|big|fee|budget|rights|availab|repeat|clash|weak|low|weaker|lowest|tie)\w*/i;
-const MISSING_AS_REASON = /\b(absent|missing|not ranked|isn't ranked|no(?: [\w-]+){0,2} (?:signal|data))\b/i;
+/** Qloo's age bands that overlap the ages in a venue's audience ("people 25-34" gives 25_to_29 and 30_to_34). */
+const BANDS: [string, number, number][] = [["24_and_younger", 0, 24], ["25_to_29", 25, 29], ["30_to_34", 30, 34], ["35_to_44", 35, 44],
+  ["45_to_54", 45, 54], ["55_and_older", 55, 120]];
+export const venueBands = (audience = "") => {
+  const m = audience.match(/(\d{2})\s*(?:-|–|to)\s*(\d{2})/);
+  return m ? BANDS.filter(([, lo, hi]) => lo <= Number(m[2]) && hi >= Number(m[1])).map(([k]) => k) : [];
+};
+
+/** Scores less than this apart within one call are a tie. */
+const TIE = 0.01;
 
 /**
  * Rules the prompt states and code enforces: the number of events, dates inside the month on the weekday named,
@@ -41,6 +48,14 @@ export function checkProgramme(
     discovered?: Set<string>;
     /** For each title a local ranking scored, the id of that call. */
     localCalls?: Map<string, string>;
+    /** For each title the taste ranking of the shortlist (no location) scored, its affinity and the call. */
+    tasteScores?: Map<string, { score: number; callId: string; popularity?: number }>;
+    /** The names each call returned, so a citation can be checked against the call it names. */
+    callNames?: Map<string, Set<string>>;
+    /** Each profiled title's age skews (Qloo's keys, such as "25_to_29"), from qloo_audience_demographics. */
+    ages?: Map<string, Record<string, number>>;
+    /** The venue's stated audience, such as "people 25-34". */
+    audience?: string;
     kind?: string;
   },
 ): string[] {
@@ -53,6 +68,52 @@ export function checkProgramme(
   const shortlist = new Set((known.shortlist ?? []).map(normalName));
   const discovered = new Set([...(known.discovered ?? [])].map(normalName));
   const featured = new Set(p.events.flatMap((e) => e.featured.map(normalName)));
+  const lookup = <T,>(m: Map<string, T> | undefined, title: string) => [...(m ?? [])].find(([n]) => normalName(n) === normalName(title))?.[1];
+  // Booked shortlist titles with a taste score, the bar a held title is measured against.
+  const programmedOnTaste = (p.shortlist_notes ?? []).filter((n) => n.verdict === "programmed")
+    .flatMap((n) => { const t = lookup(known.tasteScores, n.title); return t ? [{ title: n.title, score: t.score, popularity: t.popularity }] : []; });
+  const fit = (ages: Record<string, number>) => venueBands(known.audience).reduce((t, k) => t + (ages[k] ?? 0), 0);
+  /**
+   * Why a bookable title is held is checked against the data, not the wording: each reason names something code can
+   * see (a ranking, a profile, Qloo's popularity, a shared act in the programme), except format and rights. A title with
+   * no local data that beats a booked title on taste was held for want of data unless one of those holds it.
+   */
+  const holdProblem = (note: ShortlistNote, title: string): string | null => {
+    const own = lookup(known.tasteScores, title);
+    const hasLocal = !!lookup(known.localCalls, title);
+    const weaker = own ? programmedOnTaste.filter((x) => own.score - x.score >= TIE) : [];
+    const h = note.held_for;
+    if (!h) return `"${title}" (${note.verdict}) has no held_for; say what holds it back.`;
+    if (h === "local" && !hasLocal) return `"${title}" is held for its local fit, but no city ranking scored it: no local data is not a weak local fit.`;
+    if (h === "taste" && !own) return `"${title}" is held for its taste fit, but the taste ranking did not score it: no data is not a weak fit.`;
+    if ((h === "taste" || h === "slots" || h === "local") && weaker.length) {
+      const w = weaker[0];
+      return h === "local"
+        ? null
+        : `"${title}" out-ranks booked "${w.title}" on taste (${own!.callId}), so ${h} is not why it is held${hasLocal ? "; if the city ranking is, held_for is local" : ", and it has no local data, which is not a reason"}. Book it in place of a weaker taste fit, or give the held_for that is true.`;
+    }
+    if (h === "audience") {
+      const mine = lookup(known.ages, title);
+      if (!mine) return `"${title}" is held for its audience, but no audience profile was fetched for it.`;
+      // Every booked title it beats on taste needs a profile that fits the venue's ages better; an unprofiled one
+      // would mean the missing profile decided.
+      const against = venueBands(known.audience).length ? weaker.find((x) => { const a = lookup(known.ages, x.title); return !a || fit(a) <= fit(mine); }) : undefined;
+      if (against) return lookup(known.ages, against.title)
+        ? `"${title}" is held for its audience, but its profile fits the venue's ${known.audience} as well as or better than booked "${against.title}", which it out-ranks on taste.`
+        : `"${title}" is held for its audience, but booked "${against.title}", which it out-ranks on taste, has no audience profile to compare.`;
+    }
+    if (h === "size") {
+      const pop = own?.popularity;
+      const bigger = programmedOnTaste.find((x) => x.popularity !== undefined && pop !== undefined && x.popularity >= pop);
+      if (pop === undefined) return `"${title}" is held as too big, but the taste ranking gave no popularity for it.`;
+      if (bigger) return `"${title}" is held as too big, but booked "${bigger.title}" is at least as widely known in Qloo's data.`;
+    }
+    if (h === "same_act" && !(note.same_act_as ?? []).some((o) => featured.has(normalName(o)))) {
+      return `"${title}" is held as the same act as another, but same_act_as names no act in the programme.`;
+    }
+    if (h === "format" && known.kind === "music_bar") return `"${title}": format is not a reason at a music bar; give the held_for that is true.`;
+    return null;
+  };
   if (shortlist.size) {
     const notes = new Map((p.shortlist_notes ?? []).map((n) => [normalName(n.title), n]));
     for (const title of known.shortlist ?? []) {
@@ -69,7 +130,7 @@ export function checkProgramme(
         if (note.verdict === "not_found" && discovered.has(normalName(title))) {
           problems.push(`"${title}" came back from taste discovery on the venue's hits, so Qloo matched the right act; programme or judge it, and note the description looks wrong if it does.`);
         }
-        const localCall = [...(known.localCalls ?? [])].find(([n]) => normalName(n) === normalName(title))?.[1];
+        const localCall = lookup(known.localCalls, title);
         if (note.verdict === "skip" && localCall && !note.evidence.includes(localCall)) {
           problems.push(`"${title}" is skipped without citing ${localCall}, the city ranking that scored it; weigh both rankings.`);
         }
@@ -77,17 +138,26 @@ export function checkProgramme(
           const nights = p.events.filter((e) => e.featured.some((f) => normalName(f) === normalName(title)));
           if (nights.length && nights.every((e) => RECORDS.test(e.format))) problems.push(`"${title}" is marked programmed but only appears on a records night; use featured (played, not booked) or book it live.`);
         }
-        // Missing data never benches a title the venue can book: judge it on what is known, or say so and programme it.
         const benched = note.verdict === "skip" || note.verdict === "reserve" || (note.verdict === "featured" && inProgramme);
-        if (benched && MISSING_AS_REASON.test(note.reason) && !OTHER_REASON.test(note.reason.replace(MISSING_AS_REASON, ""))) {
-          problems.push(`"${title}": the reason rests on missing data ("${note.reason.match(MISSING_AS_REASON)![0]}"); missing is not a low score. Rewrite the reason from what Qloo did return or from the programme itself (for example that the live or headline slots are already taken by stronger fits, or the room is too small), or book it.`);
+        if (benched) {
+          const problem = holdProblem(note, title);
+          if (problem) problems.push(problem);
         }
       }
+    }
+  }
+  // Acts that share members are one act: one night between them, records nights included.
+  for (const n of p.shortlist_notes ?? []) for (const other of n.same_act_as ?? []) {
+    if (normalName(other) !== normalName(n.title) && featured.has(normalName(n.title)) && featured.has(normalName(other))) {
+      problems.push(`"${n.title}" and "${other}" share members, so they are one act; give them one night between them.`);
     }
   }
   if (p.events.length !== known.slots) problems.push(`The programme must have exactly ${known.slots} events, not ${p.events.length}.`);
   for (const partner of p.partners ?? []) {
     if (!names.has(normalName(partner.name))) problems.push(`Partner "${partner.name}" does not appear in any Qloo result; suggest only places Qloo returned.`);
+    else if (known.callNames && !partner.evidence.some((c) => known.callNames!.get(c)?.has(normalName(partner.name)))) {
+      problems.push(`Partner "${partner.name}" cites ${partner.evidence.join(", ") || "no call"}, which did not return it; cite the call that did.`);
+    }
   }
   // One night per name: the same title or act on two nights is a repeat, not a month.
   const seen = new Map<string, number>();

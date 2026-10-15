@@ -1,4 +1,4 @@
-import { decodeEntities } from "./check.js";
+import { decodeEntities, normalName } from "./check.js";
 import type { QlooEnvelope } from "./types.js";
 
 /**
@@ -25,6 +25,20 @@ function trim(value: unknown): unknown {
   }
   return value;
 }
+
+/**
+ * Qloo calls a match "semantic" when the input and the name differ only in a dash or accent ("Joe Armon-Jones" for
+ * "Joe Armon‐Jones", U+2010), which led the model to doubt a right match. Same name after normalising means exact.
+ */
+function exactWhenSame(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(exactWhenSame);
+  if (!value || typeof value !== "object") return value;
+  const o = Object.fromEntries(Object.entries(value).map(([k, v]) => [k, exactWhenSame(v)]));
+  if (typeof o.input === "string" && typeof o.name === "string" && typeof o.match === "string" && o.match !== "exact" &&
+    o.match !== "identifier" && fold(o.input) === fold(o.name)) o.match = "exact";
+  return o;
+}
+const fold = (s: string) => normalName(s).normalize("NFD").replace(/\p{M}/gu, "");
 
 /** Fields the model gets in a shaped form (or not at all); anything else Qloo adds passes through trimmed. */
 const SHAPED = new Set([...DROP, "operation", "status", "summary", "interpretation", "resolution", "results", "series", "result_count",
@@ -92,7 +106,7 @@ export function forModel(e: QlooEnvelope, args: Record<string, unknown> = {}): R
   const results = resultsOf(e);
   const issues = (e.resolution as { issues?: { candidates?: unknown[] }[] } | undefined)?.issues;
   const out: Record<string, unknown> = { status: e.status, summary: summarise(e) };
-  if (e.interpretation) out.interpretation = trim(e.interpretation);
+  if (e.interpretation) out.interpretation = trim(exactWhenSame(e.interpretation));
   if (issues?.length) out.issues = trim(issues.map((i) => ({ ...i, candidates: i.candidates?.slice(0, MAX_CANDIDATES) })));
   if (e.warnings?.length) out.warnings = e.warnings;
   if (e.error) out.error = e.error;

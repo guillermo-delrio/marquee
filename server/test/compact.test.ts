@@ -114,3 +114,15 @@ describe("flat trends", () => {
     expect((out.series as { no_movement?: boolean }[])[0].no_movement).toBe(true);
   });
 });
+
+describe("match labels", () => {
+  it("calls a match exact when only a dash or accent differs", () => {
+    const e = { status: "ok", interpretation: { options: [
+      { input: "Joe Armon-Jones", name: "Joe Armon‐Jones", match: "semantic" },
+      { input: "Nerija", name: "NÉRIJA", match: "semantic" },
+      { input: "Past Lives", name: "Past Lives (2023)", match: "semantic" },
+    ] }, results: [] } as unknown as QlooEnvelope;
+    const out = forModel(e, {}) as { interpretation: { options: { match: string }[] } };
+    expect(out.interpretation.options.map((o) => o.match)).toEqual(["exact", "exact", "semantic"]);
+  });
+});

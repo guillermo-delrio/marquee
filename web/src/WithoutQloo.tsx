@@ -17,9 +17,11 @@ const titles = (p: Programme) => {
  * with the same programme rules and no Qloo, planned the month twice: the two runs show how much plans differ by
  * chance, and a difference only counts when both runs without Qloo agree on it.
  */
-export function WithoutQloo({ labels: VERDICT, ours, theirs, second, city, informed, localSeen, profilesSeen }: {
+export function WithoutQloo({ labels: VERDICT, ours, theirs, second, city, informed, localSeen, profilesSeen, scored }: {
   labels: Record<ShortlistNote["verdict"], string>;
   ours: Programme; theirs: Programme; second?: Programme; city: string; informed: string[]; localSeen: boolean; profilesSeen: boolean;
+  /** Titles a Qloo ranking scored: a verdict on any other title cannot rest on Qloo's data. */
+  scored: string[];
 }) {
   const a = titles(ours);
   const b = titles(theirs);
@@ -37,6 +39,12 @@ export function WithoutQloo({ labels: VERDICT, ours, theirs, second, city, infor
   const verdicts = (ours.shortlist_notes ?? []).map((n) => ({ ours: n, theirs: v1.get(key(n.title)), again: v2.get(key(n.title)) }));
   // A verdict difference counts only when both runs without Qloo agree with each other and not with Marquee.
   const differ = verdicts.filter((v) => v.theirs && v.theirs === v.again && v.theirs !== v.ours.verdict);
+  // A difference is Qloo's only when the verdict rests on its data: the title was scored, and it was not held for format,
+  // rights or a shared act (judgement). A title Qloo never scored is held by the evidence-first policy, not by data.
+  const scoredKeys = new Set(scored.map(key));
+  const restsOn = (n: ShortlistNote) => !scoredKeys.has(key(n.title)) ? "No Qloo data"
+    : ["format", "rights", "same_act"].includes(n.held_for ?? "") || !n.evidence.length ? "Judgement" : "Qloo data";
+  const fromQloo = differ.filter((v) => restsOn(v.ours) === "Qloo data").length;
   const unstable = verdicts.filter((v) => v.theirs && v.again && v.theirs !== v.again).length;
   const day = (iso: string) => new Date(`${iso}T12:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
   const pushOf = (p?: Programme) => {
@@ -75,14 +83,20 @@ export function WithoutQloo({ labels: VERDICT, ours, theirs, second, city, infor
         <div><h4>All three plans</h4><ul className="plain">{shared.map((t) => <li key={t}>{t}</li>)}</ul>{shared.length === 0 && <p className="muted">None</p>}</div>
       </div>
       {differ.length > 0 && (
+        <p className="without-lead">
+          {fromQloo} of {differ.length} verdict difference{differ.length === 1 ? "" : "s"} rest{differ.length === 1 ? "s" : ""} on Qloo's data{fromQloo < differ.length ? "; the rest are Marquee's judgement or titles Qloo has no data on" : ""}.
+        </p>
+      )}
+      {differ.length > 0 && (
         <table className="verdict-table">
-          <thead><tr><th scope="col">Title</th><th scope="col">Without Qloo (both runs)</th><th scope="col">With Qloo, and why</th></tr></thead>
+          <thead><tr><th scope="col">Title</th><th scope="col">Without Qloo (both runs)</th><th scope="col">With Qloo, and why</th><th scope="col">Rests on</th></tr></thead>
           <tbody>
             {differ.map((v) => (
               <tr key={v.ours.title}>
                 <td>{v.ours.title}</td>
                 <td>{VERDICT[v.theirs!]}</td>
                 <td><strong>{VERDICT[v.ours.verdict]}</strong>: <Cite text={v.ours.reason} />{v.ours.evidence.length ? <> <Cite text={v.ours.evidence.join(", ")} /></> : null}</td>
+                <td>{restsOn(v.ours)}</td>
               </tr>
             ))}
           </tbody>

@@ -13,7 +13,7 @@ export function TasteVsPlace({ c }: { c: Comparison }) {
   const n = c.rows.length;
   const city = c.location;
   const withLocal = c.rows.filter((r) => r.local !== null).length;
-  // Each axis is scaled to its own ranking: #1 of 10 by taste and #1 of 6 in the city both sit at the left edge.
+  // Both marks share one 1..n axis of positions: #2 in a city ranking of two sits at #2, not at the far end.
   return (
     <figure className="panel viz">
       <figcaption>
@@ -29,11 +29,11 @@ export function TasteVsPlace({ c }: { c: Comparison }) {
         </ul>
       </figcaption>
       <div className="dumbbells" role="list">
-        <div className="db-axis" aria-hidden><span className="db-ends"><span>best</span><span>last ranked</span></span></div>
+        <div className="db-axis" aria-hidden><span className="db-ends"><span>#1</span><span>#{n}</span></span></div>
         {c.rows.map((r) => {
           const label = `${r.name}: ${ord(r.taste)} of ${n} by taste, ${r.local ? `${ord(r.local)} of ${withLocal} in ${city}` : `not ranked in ${city}`}`;
           const a = at(r.taste, n);
-          const b = r.local ? at(r.local, withLocal) : null;
+          const b = r.local ? at(r.local, n) : null;
           return (
             <div key={r.id} className={`db-row${r.programmed ? " on" : ""}`} role="listitem" title={label} aria-label={label}>
               <span className="db-name">

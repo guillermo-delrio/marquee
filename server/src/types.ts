@@ -47,6 +47,10 @@ export interface ShortlistNote {
   verdict: "programmed" | "featured" | "reserve" | "skip" | "not_found";
   reason: string;
   evidence: string[];
+  /** For a held title (skip, reserve, or played but not booked): what holds it back. */
+  /** Music bars: acts that share members with this one; they get one night between them. */
+  same_act_as?: string[];
+  held_for?: "taste" | "local" | "audience" | "size" | "same_act" | "format" | "rights" | "slots";
 }
 
 export interface Programme {
