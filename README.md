@@ -1,5 +1,7 @@
 # Marquee
 
+**Live demo:** https://marquee-1088237017332.us-central1.run.app (open a sample venue for an instant replay; live plans are limited to 3 per visitor a day)
+
 A programming assistant for independent venues. Tell it what kind of venue you run, where, what recently filled the room and, if you like, the titles you can actually book. An agent asks Qloo what people with your regulars' taste gravitate to, checks which titles land in your city, and returns a month of dated events, a verdict on every title you could book, and the evidence behind each choice.
 
 ## The problem
