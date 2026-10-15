@@ -57,7 +57,10 @@ export const resultsOf = (e: QlooEnvelope): unknown[] => listOf(e).filter(hasPoi
 function shortenSeries(item: unknown): unknown {
   const points = (item as { points?: unknown[] } | null)?.points;
   if (!Array.isArray(points) || points.length <= 2) return item;
-  return { ...(item as object), points: [points[0], points.at(-1)], points_total: points.length };
+  // Values that never move across the window are a gap in the data, not "flat momentum".
+  const shape = (p: unknown) => JSON.stringify(Object.entries(p as object).filter(([k]) => k !== "date"));
+  const still = points.every((p) => shape(p) === shape(points[0]));
+  return { ...(item as object), points: [points[0], points.at(-1)], points_total: points.length, ...(still ? { no_movement: true } : {}) };
 }
 
 const nameOf = (r: unknown) => (r && typeof r === "object" && typeof (r as { name?: unknown }).name === "string" ? decodeEntities((r as { name: string }).name) : null);

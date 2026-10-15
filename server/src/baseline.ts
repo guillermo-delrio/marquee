@@ -10,9 +10,10 @@ import type { Programme, VenueInput } from "./types.js";
  */
 const BASELINE_SCHEMA = {
   type: "object",
-  required: ["headline", "summary", "events", "shortlist_notes"],
+  required: ["headline", "summary", "push", "events", "shortlist_notes"],
   properties: {
     headline: { type: "string" },
+    push: { type: "string", description: "Date (YYYY-MM-DD) of the one event to push hardest." },
     summary: { type: "array", items: { type: "string" } },
     events: {
       type: "array",
@@ -24,6 +25,8 @@ const BASELINE_SCHEMA = {
           when: { type: "string" },
           date: { type: "string", description: "YYYY-MM-DD inside the month." },
           start_time: { type: "string", description: "24-hour HH:MM." },
+          runtime_minutes: { type: "integer" },
+          source: { type: "string", enum: ["shortlist", "taste", "local", "reprise"] },
           format: { type: "string" },
           featured: { type: "array", items: { type: "string" }, description: "The exact titles or artists featured." },
           why: { type: "string" },
@@ -93,7 +96,7 @@ export async function runBaseline(
     const use = response.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use" && b.name === "submit_programme");
     if (use) {
       const p = use.input as Partial<Programme>;
-      out.programme = { headline: p.headline ?? "", summary: p.summary, audience_read: "", events: p.events ?? [], limits: [], next_checks: [],
+      out.programme = { headline: p.headline ?? "", summary: p.summary, push: p.push, audience_read: "", events: p.events ?? [], limits: [], next_checks: [],
         ...(p.shortlist_notes ? { shortlist_notes: p.shortlist_notes.map((n) => ({ ...n, evidence: [] })) } : {}) };
       break;
     }

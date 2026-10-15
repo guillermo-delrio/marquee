@@ -93,3 +93,11 @@ describe("verdict rules", () => {
     ] }, shortlisted)).toEqual([]);
   });
 });
+
+describe("local check of taste picks", () => {
+  it("asks for a city check of every programmed taste pick", () => {
+    const p = programme([event({ source: "taste", featured: ["Paterson"] }), event({ featured: ["Columbus"], date: "2026-11-07", when: "Week 1, Saturday evening", source: "taste" })]);
+    const problems = checkProgramme(p, { ...known, checkedLocally: new Set(["Paterson"]) });
+    expect(problems).toEqual([expect.stringMatching(/"Columbus" is a taste pick that was never checked in the city/)]);
+  });
+});

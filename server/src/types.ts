@@ -53,6 +53,8 @@ export interface Programme {
   headline: string;
   /** Three plain bullets for the owner; absent in runs saved before it existed. */
   summary?: string[];
+  /** Date of the event to push hardest. */
+  push?: string;
   audience_read: string;
   events: ProgrammeEvent[];
   limits: string[];

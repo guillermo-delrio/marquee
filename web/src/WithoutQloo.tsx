@@ -38,6 +38,16 @@ export function WithoutQloo({ ours, theirs, second, city, informed }: {
   // A verdict difference counts only when both runs without Qloo agree with each other and not with Marquee.
   const differ = verdicts.filter((v) => v.theirs && v.theirs === v.again && v.theirs !== v.ours.verdict);
   const unstable = verdicts.filter((v) => v.theirs && v.again && v.theirs !== v.again).length;
+  const day = (iso: string) => new Date(`${iso}T12:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
+  const pushOf = (p?: Programme) => {
+    const e = p?.push ? p.events.find((x) => x.date === p.push) : undefined;
+    return e ? { what: e.featured.join(" + ") || e.title, when: day(p!.push!) } : null;
+  };
+  const ourPush = pushOf(ours);
+  // The control runs' push nights, grouped by title: "The Substance (Fri 6 Nov, Fri 13 Nov)".
+  const theirPush = new Map<string, string[]>();
+  for (const x of [pushOf(theirs), pushOf(second)]) if (x) theirPush.set(x.what, [...(theirPush.get(x.what) ?? []), x.when]);
+  const pushes = [ourPush ? `${ourPush.what} (${ourPush.when})` : null, [...theirPush].map(([w, d]) => `${w} (${d.join(", ")})`).join(" and ") || null];
   return (
     <section className="panel without">
       <h3>With and without Qloo</h3>
@@ -49,6 +59,11 @@ export function WithoutQloo({ ours, theirs, second, city, informed }: {
         who their audiences are, or which places share the taste.
         {runOverlap !== null && <> Its two plans shared {runOverlap} of {runUnion} titles{unstable ? ` and disagreed with each other on ${unstable} verdict${unstable === 1 ? "" : "s"}` : ""}: that is how much plans differ by chance, so only differences both runs agree on are listed.</>}
       </p>
+      {pushes[0] && pushes[1] && (
+        <p className="without-lead">
+          Night to push hardest: with Qloo, <strong>{pushes[0]}</strong>; without Qloo, {pushes[1]}.
+        </p>
+      )}
       <div className="without-cols">
         <div><h4>Only with Qloo</h4><ul className="plain">{onlyOurs.map((t) => <li key={t}>{t}</li>)}</ul>{onlyOurs.length === 0 && <p className="muted">None</p>}</div>
         <div><h4>Only without Qloo (both runs)</h4><ul className="plain">{onlyTheirs.map((t) => <li key={t}>{t}</li>)}</ul>{onlyTheirs.length === 0 && <p className="muted">None</p>}</div>

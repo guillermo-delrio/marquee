@@ -106,3 +106,11 @@ describe("escaped names", () => {
     expect(normalName("Writers &amp; Lovers")).toBe(normalName("Writers & Lovers"));
   });
 });
+
+describe("flat trends", () => {
+  it("marks a series whose values never move as missing data", () => {
+    const flat = Array.from({ length: 5 }, (_, i) => ({ date: `2026-0${i + 1}-01`, population_percentile: 0.5, population_rank_velocity: 0 }));
+    const out = forModel({ status: "ok", series: [{ entity: { name: "Film 1" }, points: flat }] });
+    expect((out.series as { no_movement?: boolean }[])[0].no_movement).toBe(true);
+  });
+});

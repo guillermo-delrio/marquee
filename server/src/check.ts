@@ -30,7 +30,7 @@ const MISSING_AS_REASON = /\b(absent|missing|not ranked|isn't ranked|no (local |
  */
 export function checkProgramme(
   p: Programme,
-  known: { month: string; slots: number; names: Set<string>; callIds: Set<string>; shortlist?: string[] },
+  known: { month: string; slots: number; names: Set<string>; callIds: Set<string>; shortlist?: string[]; checkedLocally?: Set<string> },
 ): string[] {
   const problems: string[] = [];
   const names = new Set([...known.names].map(normalName));
@@ -64,6 +64,12 @@ export function checkProgramme(
     const at = `Event ${i + 1} ("${e.title}")`;
     for (const f of e.featured) if (!names.has(normalName(f))) problems.push(`${at}: "${f}" does not appear in any Qloo result; feature only returned titles, named as returned.`);
     for (const c of e.evidence) if (!known.callIds.has(c.call_id)) problems.push(`${at}: ${c.call_id} is not a call in this run.`);
+    if (e.source === "taste" && known.checkedLocally) {
+      const local = new Set([...known.checkedLocally].map(normalName));
+      for (const f of e.featured) {
+        if (!local.has(normalName(f))) problems.push(`${at}: "${f}" is a taste pick that was never checked in the city; rank it with the venue's location before programming it (step 3).`);
+      }
+    }
     if (e.source === "shortlist" && !e.featured.some((f) => shortlist.has(normalName(f)))) {
       problems.push(`${at}: marked as from the shortlist but features none of it.`);
     }

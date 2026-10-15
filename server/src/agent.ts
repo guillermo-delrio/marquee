@@ -20,7 +20,7 @@ const HARD_COST_USD = 0.5;
 
 const PROGRAMME_SCHEMA = {
   type: "object",
-  required: ["headline", "summary", "audience_read", "events", "limits", "next_checks", "partners", "audience_check"],
+  required: ["headline", "summary", "push", "audience_read", "events", "limits", "next_checks", "partners", "audience_check"],
   properties: {
     headline: { type: "string", description: "One sentence: the month's programming idea." },
     summary: { type: "array", items: { type: "string" }, description: "Three short plain-language bullets for the owner; no call ids, handles or decimals." },
@@ -74,6 +74,7 @@ const PROGRAMME_SCHEMA = {
         },
       },
     },
+    push: { type: "string", description: "Date (YYYY-MM-DD) of the one event to push hardest." },
     soundtrack: {
       type: "array",
       description: "Up to five musicians from the soundtrack call that this audience over-indexes on, named as returned, for a pre-show playlist or themed night.",
@@ -115,13 +116,15 @@ Qloo entities appear in results under short handles (e1, e2, ...). Pass those ha
 Research in this order, adapting when a step returns little:
 1. Resolve each recent hit with qloo_describe (type "${t.type}"). If one is ambiguous, pick the candidate that fits the venue and say why. From then on, pass handles, not names.
 2. Taste discovery: qloo_recommend with target_type "${t.type}", signals = the resolved hits, limit 20, and NO location or demographic. This is what the venue's own audience gravitates to.
-3. Local check: qloo_rank the 10 strongest discovery candidates with the same signals plus signal_location = the venue's location (and demographic = the audience, if given). If the ranking is empty, follow the result's note (a neighbourhood may need its city) and say which location the evidence is for.
+3. Local check (required for every discovery pick you programme): qloo_rank the 10 strongest discovery candidates with the same signals plus signal_location = the venue's location, and no demographic, so the ranking is about the place alone. If it is empty, follow the result's note (a neighbourhood may need its city) and say which location the evidence is for. The audience is checked separately in step 7.
 If the venue gives a shortlist (titles it can actually book this month), it is the main pool:
   a. Taste fit: qloo_rank the shortlist (option_type "${t.type}") with the resolved hits as signals and no location.
-  b. Local fit: qloo_rank the same shortlist with the hits plus the location (and audience) that worked in step 3.
+  b. Local fit: qloo_rank the same shortlist with the hits plus the location that worked in step 3, no demographic.
+  c. Check each resolved shortlist title is the work the venue means (its description and year): Qloo's search is fuzzy, and a wrong match gets the verdict not_found with the reason "check the title", never a judgement of the wrong work.
+  Having a local signal is not by itself a reason to programme a title, and the push night should be a strong taste fit.
   Taste-discovery picks may fill remaining slots as source "taste", noted as not on the shortlist so availability needs checking.
 4. Optional, for at most two broader-appeal slots (a family matinee, a crowd night): qloo_recommend with signal_location and no taste signals, labelled as local crowd-pleasers.
-5. Co-promotion partners: qloo_recommend with target_type "place", signals = the resolved hits, filter_location = the venue's city, include_tags = one place-category tag id that suits a pairing (for example "urn:tag:category:place:bar" or "urn:tag:category:place:cafe"), limit 10. Keep only places whose address is in or next to the venue's neighbourhood or borough (results can spill into neighbouring areas; check the postcode), that look independent and fit specific events, each with one concrete idea. Never a competitor (${t.competitor}), a chain, a hotel or an institutional cafeteria. Give each partner's address as Qloo returned it.${t.soundtrack ? `
+5. Co-promotion partners: qloo_recommend with target_type "place", signals = the resolved hits, filter_location = the venue's location as given (neighbourhoods work here; fall back to the city if it returns nothing), include_tags = one place-category tag id that suits a pairing (for example "urn:tag:category:place:bar" or "urn:tag:category:place:cafe"), limit 10. Keep only places whose address is in or next to the venue's neighbourhood or borough (results can spill into neighbouring areas; check the postcode), that look independent and fit specific events, each with one concrete idea. Never a competitor (${t.competitor}), a chain, a hotel or an institutional cafeteria. Give each partner's address as Qloo returned it.${t.soundtrack ? `
 6. Soundtrack: qloo_recommend with target_type "artist", signals = the resolved hits, limit 10: musicians this audience over-indexes on, for a pre-show playlist or a themed night. Put up to five in soundtrack.` : ""}
 7. Audience check: qloo_audience_demographics (entity_type "${t.type}") for the two lead picks. Values are skews against the general population (positive means over-represented).
 8. Optional: ${t.trends ? `qloo_trends for the top picks over the six months to the date given as today, and ` : ""}qloo_where_popular for the lead pick within the venue's city (it often returns nothing).
@@ -130,13 +133,14 @@ Use at most ${MAX_TOOL_CALLS} tool calls. Do any check worth doing now rather th
 How to read Qloo:
 - A title missing from a ranking has no Qloo signal there. If it is missing from a taste ranking too, Qloo has no data on it at all; say that. Either way it is missing data, not a low score: never give it as a reason to skip or hold a title.
 - Within one call, scores less than 0.01 apart are a tie, and per-hit contributions within 0.03 of each other mean no hit leads: do not present such orders as meaningful. Scores from separate calls are not comparable.
-- Popularity (0 to 1) is how widely known a title or act is in Qloo's catalogue. It says nothing about availability. For live bookings only, very high popularity (above about 0.95) hints at a fee beyond a small room.
+- Popularity (0 to 1) is how widely known a title or act is in Qloo's catalogue. It says nothing about availability or fees.
+- A trend series whose values do not move at all is missing data, not "flat momentum".
 
 Programme rules:
 ${sharedRules(kind)}
 - Feature only ${t.noun} that appear in tool results, named exactly as returned.
 - Every event's evidence cites call ids (q1, q2, ...) and states what that result shows. Distinguish a Qloo result from your own programming judgement.
-- State facts about a title (language, director, cast, setting, year, runtime) only when Qloo's data says them; otherwise leave them out. Give runtime_minutes when Qloo has a runtime (for a double bill, both plus a 15-minute interval).
+- State facts about a title (language, director, cast, setting, year, runtime) only when Qloo's data says them; otherwise leave them out.
 - Confidence: high only for a pick near the top of both the taste and the local ranking; medium for a taste pick with no local signal, or a local pick with weak taste support; low for judgement-led slots.
 - audience_check: one plain sentence per lead pick naming its largest skews in words (for example "leans 35-44 and female"), then what that changes in the programme. If a pick does not fit the venue's audience, the programme must reflect it (its slot, format or how it is sold).
 - In limits, say what the data does not establish (no ticket-sales data, aggregate affinity only, evidence for the city rather than the neighbourhood).${mock ? " The results are MOCK DATA, not Qloo results: say so first." : ""}`;
@@ -185,6 +189,8 @@ export async function runAgent(
   // What the programme may feature and cite: names Qloo returned (never resolution alternatives) and real call ids.
   const names = new Set<string>();
   const callIds = new Set<string>();
+  // Titles that went through a successful ranking with a location: the only taste picks that may be programmed.
+  const checkedLocally = new Set<string>();
   // The model sees short handles for entity ids, never the ids themselves.
   const handles = createHandles();
   let submissions = 0;
@@ -201,6 +207,9 @@ export async function runAgent(
     }
     callIds.add(callId);
     namesIn([envelope.interpretation, envelope.results, envelope.series], names);
+    if (name === "qloo_rank" && args.signal_location && envelope.status === "ok" && resultsOf(envelope).length > 0) {
+      namesIn((envelope.interpretation as { options?: unknown } | undefined)?.options, checkedLocally);
+    }
     emit({
       type: "tool_result",
       call_id: callId,
@@ -256,7 +265,7 @@ export async function runAgent(
     for (const use of uses) {
       if (use.name === "submit_programme") {
         const submitted = use.input as Programme;
-        const problems = checkProgramme(submitted, { month: venue.month, slots: venue.slots, names, callIds, shortlist: venue.shortlist });
+        const problems = checkProgramme(submitted, { month: venue.month, slots: venue.slots, names, callIds, shortlist: venue.shortlist, checkedLocally });
         if (problems.length && ++submissions < 2) {
           results.push({ type: "tool_result", tool_use_id: use.id, is_error: true,
             content: `Not accepted. Fix these and call submit_programme again:\n- ${problems.join("\n- ")}` });

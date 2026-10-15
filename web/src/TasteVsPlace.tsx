@@ -13,6 +13,7 @@ export function TasteVsPlace({ c }: { c: Comparison }) {
   const n = c.rows.length;
   const city = c.location;
   const withLocal = c.rows.filter((r) => r.local !== null).length;
+  // Each axis is scaled to its own ranking: #1 of 10 by taste and #1 of 6 in the city both sit at the left edge.
   return (
     <figure className="panel viz">
       <figcaption>
@@ -28,11 +29,11 @@ export function TasteVsPlace({ c }: { c: Comparison }) {
         </ul>
       </figcaption>
       <div className="dumbbells" role="list">
-        <div className="db-axis" aria-hidden><span className="db-ends"><span>#1 (best)</span><span>{ord(n)}</span></span></div>
+        <div className="db-axis" aria-hidden><span className="db-ends"><span>best</span><span>last ranked</span></span></div>
         {c.rows.map((r) => {
-          const label = `${r.name}: ${ord(r.taste)} by taste, ${r.local ? `${ord(r.local)} in ${city}` : `not ranked in ${city}`}`;
+          const label = `${r.name}: ${ord(r.taste)} of ${n} by taste, ${r.local ? `${ord(r.local)} of ${withLocal} in ${city}` : `not ranked in ${city}`}`;
           const a = at(r.taste, n);
-          const b = r.local ? at(r.local, n) : null;
+          const b = r.local ? at(r.local, withLocal) : null;
           return (
             <div key={r.id} className={`db-row${r.programmed ? " on" : ""}`} role="listitem" title={label} aria-label={label}>
               <span className="db-name">
@@ -43,7 +44,7 @@ export function TasteVsPlace({ c }: { c: Comparison }) {
                 <span className="mark ring" style={{ left: `${a}%` }} />
                 {b !== null && <span className="mark dot" style={{ left: `${b}%` }} />}
               </span>
-              <span className="db-value">{ord(r.taste)} → {r.local ? ord(r.local) : <em>not ranked</em>}</span>
+              <span className="db-value">{ord(r.taste)}/{n} → {r.local ? `${ord(r.local)}/${withLocal}` : <em>not ranked</em>}</span>
             </div>
           );
         })}

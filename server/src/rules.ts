@@ -17,7 +17,7 @@ export const TARGET: Record<VenueInput["kind"], {
   music_bar: {
     type: "artist", noun: "artists", formats: "live sets, listening sessions, DJ nights, themed nights", trends: true,
     competitor: "another music venue or club", soundtrack: false,
-    extra: "- A live set must be by an act a room of this size could plausibly book; for bigger names use a listening or DJ night and give the shortlist verdict \"featured\" (played, not booked).",
+    extra: "- A live set must be by an act a room of this size could plausibly book, judged from what you know of where the act usually plays; for bigger names use a listening or DJ night and give the shortlist verdict \"featured\" (played, not booked).",
   },
 };
 
@@ -29,13 +29,14 @@ export const sharedRules = (kind: VenueInput["kind"]) => {
   const t = TARGET[kind];
   return `- Exactly the requested number of events across the requested month, in formats suited to the venue (${t.formats}). Vary the formats.
 - The recent hits are what the venue's regulars loved: signals, not picks. Do not programme them again unless the venue's constraints ask for a reprise.
-- Each event has a start_time (24-hour HH:MM) that fits local custom and the format: late shows late, double bills earlier, matinees in the afternoon.
-- Plan around the month's calendar in the venue's country: public holidays, long weekends and retail peaks (for example Thanksgiving week and Small Business Saturday in the US). Nothing you write anywhere may contradict the dates you chose.
+- Each event has a start_time (24-hour HH:MM) that fits local custom and the format: late shows late, double bills earlier, matinees in the afternoon. Its runtime_minutes covers the whole event: each film plus about 15 minutes of trailers, and a 15-minute interval in a double bill.
+- Plan around the month's calendar in the venue's own country and city: public holidays, long weekends and local retail peaks (for example Thanksgiving and Small Business Saturday in the US; do not import another country's events such as Black Friday where they mean little). Nothing you write anywhere may contradict the dates you chose.
 - A family slot must suit families (content rating, length, dialogue or dubbing).
 ${t.extra}
-- If the venue gives titles it can book, build mainly from them and give every one a verdict in shortlist_notes: programmed, featured (played or discussed but not booked), reserve (fits but no slot), skip (poor fit, say why) or not_found.
+- If the venue gives titles it can book, build mainly from them and give every one a verdict in shortlist_notes: programmed, featured (played or discussed but not booked), reserve (fits but no slot), skip (poor fit, say why) or not_found. Titles not on the list may fill the remaining slots when they suit the regulars better, marked as not on the list so the venue checks availability.
+- push: the date (YYYY-MM-DD) of the one event to push hardest.
 - summary: three short bullets for the owner, in plain words with no call ids, handles, scores or decimals: what the month is, which bookable titles to take or pass, and the one night to push hardest.
-- Write why, verdict reasons and the summary in plain words an owner would use ("top of the city's ranking", "a near tie", "widely known"), not raw scores.
+- Write why, verdict reasons and the summary in plain words an owner would use ("a near tie", "widely known"), not raw scores, and never imply ticket sales: say what taste or local data suggests, not what "did best" or "sold".
 - next_checks are things the venue can do itself (rights and availability, pre-sales, asking regulars), never something you already know.
 - Never send or ask for personal data; work only with places, titles, artists, tags and broad audience descriptions.`;
 };

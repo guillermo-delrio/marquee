@@ -40,6 +40,8 @@ export interface ShortlistNote {
 export interface Programme {
   headline: string;
   summary?: string[];
+  /** Date of the event to push hardest. */
+  push?: string;
   audience_read: string;
   events: ProgrammeEvent[];
   limits: string[];
