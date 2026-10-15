@@ -90,7 +90,7 @@ export default function App() {
           <h1>Marquee</h1>
           <p className="tagline">Programme next month from what your regulars already love, checked against your city.</p>
         </div>
-        {live !== null && <span className={live ? "badge live" : "badge mock"}>{live ? "Live Qloo data" : "Mock Qloo data"}</span>}
+        {live !== null && <span className={live ? "badge live" : "badge mock"}>{live ? (sampleShown ? "Saved run · live Qloo data" : "Live Qloo data") : "Mock Qloo data"}</span>}
       </header>
       <main className="layout">
         <aside>

@@ -22,6 +22,9 @@ export function namesIn(value: unknown, into = new Set<string>()): Set<string> {
 }
 
 /** A reason that treats a title's absence from a ranking as evidence against it. */
+const COUNT = /\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\d+)\s+(?:[a-z-]+\s+)?(picks?|events?|nights?|evenings?|titles?|films?|books?|acts?|shows?|screenings?|sets?)\b/i;
+const RECORDS = /\b(listening|records?|vinyl|dj)\b/i;
+
 /** A reason of its own beside the missing data: no slot, room size, runtime, family fit, rights, a weak taste fit... */
 const OTHER_REASON = /\b(slot|room|space|runtime|long|length|family|big|fee|budget|rights|availab|repeat|clash|weak|low|weaker|lowest|tie)\w*/i;
 const MISSING_AS_REASON = /\b(absent|missing|not ranked|isn't ranked|no(?: [\w-]+){0,2} (?:signal|data))\b/i;
@@ -32,11 +35,23 @@ const MISSING_AS_REASON = /\b(absent|missing|not ranked|isn't ranked|no(?: [\w-]
  */
 export function checkProgramme(
   p: Programme,
-  known: { month: string; slots: number; names: Set<string>; callIds: Set<string>; shortlist?: string[]; checkedLocally?: Set<string> },
+  known: {
+    month: string; slots: number; names: Set<string>; callIds: Set<string>; shortlist?: string[]; checkedLocally?: Set<string>;
+    /** Titles Qloo's taste discovery returned for the venue's hits. */
+    discovered?: Set<string>;
+    /** For each title a local ranking scored, the id of that call. */
+    localCalls?: Map<string, string>;
+    kind?: string;
+  },
 ): string[] {
   const problems: string[] = [];
+  // Counts belong to the page, which computes them; the model's own counts drift from its plan.
+  for (const [where, text] of [["headline", p.headline], ...(p.summary ?? []).map((s) => ["summary", s] as const)] as const) {
+    if (COUNT.test(text ?? "")) problems.push(`The ${where} states a count ("${(text ?? "").match(COUNT)![0]}"); leave counts to the page.`);
+  }
   const names = new Set([...known.names].map(normalName));
   const shortlist = new Set((known.shortlist ?? []).map(normalName));
+  const discovered = new Set([...(known.discovered ?? [])].map(normalName));
   const featured = new Set(p.events.flatMap((e) => e.featured.map(normalName)));
   if (shortlist.size) {
     const notes = new Map((p.shortlist_notes ?? []).map((n) => [normalName(n.title), n]));
@@ -51,10 +66,21 @@ export function checkProgramme(
             ? `"${title}" is in the programme but its verdict is ${note.verdict}; use programmed (booked) or featured (played, not booked).`
             : `"${title}" has the verdict ${note.verdict} but no event features it.`);
         }
+        if (note.verdict === "not_found" && discovered.has(normalName(title))) {
+          problems.push(`"${title}" came back from taste discovery on the venue's hits, so Qloo matched the right act; programme or judge it, and note the description looks wrong if it does.`);
+        }
+        const localCall = [...(known.localCalls ?? [])].find(([n]) => normalName(n) === normalName(title))?.[1];
+        if (note.verdict === "skip" && localCall && !note.evidence.includes(localCall)) {
+          problems.push(`"${title}" is skipped without citing ${localCall}, the city ranking that scored it; weigh both rankings.`);
+        }
+        if (note.verdict === "programmed" && known.kind === "music_bar") {
+          const nights = p.events.filter((e) => e.featured.some((f) => normalName(f) === normalName(title)));
+          if (nights.length && nights.every((e) => RECORDS.test(e.format))) problems.push(`"${title}" is marked programmed but only appears on a records night; use featured (played, not booked) or book it live.`);
+        }
         // Missing data never benches a title the venue can book: judge it on what is known, or say so and programme it.
         const benched = note.verdict === "skip" || note.verdict === "reserve" || (note.verdict === "featured" && inProgramme);
         if (benched && MISSING_AS_REASON.test(note.reason) && !OTHER_REASON.test(note.reason.replace(MISSING_AS_REASON, ""))) {
-          problems.push(`"${title}": the reason rests on missing data ("${note.reason.match(MISSING_AS_REASON)![0]}"); missing is not a low score. Give a reason from the data Qloo did return, or the programme.`);
+          problems.push(`"${title}": the reason rests on missing data ("${note.reason.match(MISSING_AS_REASON)![0]}"); missing is not a low score. Rewrite the reason from what Qloo did return or from the programme itself (for example that the live or headline slots are already taken by stronger fits, or the room is too small), or book it.`);
         }
       }
     }

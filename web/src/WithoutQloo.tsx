@@ -1,7 +1,6 @@
 import { Cite } from "./Cite";
-import type { Programme } from "./types";
+import type { Programme, ShortlistNote } from "./types";
 
-const VERDICT = { programmed: "Programmed", featured: "Played, not booked", reserve: "Reserve", skip: "Skip", not_found: "Not found" } as const;
 
 /** Titles compare without authors ("Piranesi by Susanna Clarke"), notes in brackets, case or punctuation. */
 const key = (s: string) => s.normalize("NFKC").toLowerCase().replace(/\s*[([].*?[)\]]\s*/g, " ").replace(/\s+by\s+.*$/, "")
@@ -18,7 +17,8 @@ const titles = (p: Programme) => {
  * with the same programme rules and no Qloo, planned the month twice: the two runs show how much plans differ by
  * chance, and a difference only counts when both runs without Qloo agree on it.
  */
-export function WithoutQloo({ ours, theirs, second, city, informed, localSeen, profilesSeen }: {
+export function WithoutQloo({ labels: VERDICT, ours, theirs, second, city, informed, localSeen, profilesSeen }: {
+  labels: Record<ShortlistNote["verdict"], string>;
   ours: Programme; theirs: Programme; second?: Programme; city: string; informed: string[]; localSeen: boolean; profilesSeen: boolean;
 }) {
   const a = titles(ours);
@@ -44,11 +44,15 @@ export function WithoutQloo({ ours, theirs, second, city, informed, localSeen, p
     return e ? { what: e.title, when: day(p!.push!) } : null;
   };
   const ourPush = pushOf(ours);
-  // The control runs' push nights, grouped by date: "Fri 6 Nov, The Substance (both runs)".
-  const theirPush = new Map<string, { what: string; runs: number }>();
-  for (const x of [pushOf(theirs), pushOf(second)]) if (x) theirPush.set(x.when, { what: x.what, runs: (theirPush.get(x.when)?.runs ?? 0) + 1 });
+  // The control runs' push nights, grouped by date and event: "Fri 6 Nov, The Substance (both runs)".
+  const theirPush = new Map<string, { label: string; runs: number }>();
+  for (const x of [pushOf(theirs), pushOf(second)]) {
+    if (!x) continue;
+    const k = `${x.when}|${x.what}`;
+    theirPush.set(k, { label: `${x.when}, ${x.what}`, runs: (theirPush.get(k)?.runs ?? 0) + 1 });
+  }
   const pushes = [ourPush ? `${ourPush.when}, ${ourPush.what}` : null,
-    [...theirPush].map(([when, x]) => `${when}, ${x.what}${second ? (x.runs === 2 ? " (both runs)" : " (one run)") : ""}`).join("; ") || null];
+    [...theirPush.values()].map((x) => `${x.label}${second ? (x.runs === 2 ? " (both runs)" : " (one run)") : ""}`).join("; ") || null];
   return (
     <section className="panel without">
       <h3>With and without Qloo</h3>

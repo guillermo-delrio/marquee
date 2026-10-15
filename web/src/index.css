@@ -55,7 +55,8 @@ a.cite { white-space: nowrap;
 a.cite:hover { text-decoration: underline; }
 
 .app { max-width: 1240px; margin: 0 auto; padding: 24px 16px 48px; }
-.top { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 20px; }
+/* Wraps so a longer badge ("Saved run · live Qloo data") drops below the title on a phone instead of widening the page. */
+.top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 8px 16px; margin-bottom: 20px; }
 .tagline { margin: 0; color: var(--ink-2); }
 .badge { border-radius: 999px; padding: 4px 12px; font-size: 0.8rem; font-weight: 600; white-space: nowrap; }
 .badge.live { background: color-mix(in srgb, var(--ok) 15%, transparent); color: var(--ok); }

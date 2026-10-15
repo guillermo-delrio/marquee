@@ -120,7 +120,7 @@ Research in this order, adapting when a step returns little:
 If the venue gives a shortlist (titles it can actually book this month), it is the main pool:
   a. Taste fit: qloo_rank the shortlist (option_type "${t.type}") with the resolved hits as signals and no location.
   b. Local fit: qloo_rank the same shortlist with the hits plus the location that worked in step 3, no demographic.
-  c. Check each resolved shortlist title is the work the venue means (its description and year): Qloo's search is fuzzy, and a wrong match gets the verdict not_found with the reason "check the title", never a judgement of the wrong work.
+  c. Check each resolved shortlist title is the work the venue means (its description and year): Qloo's search is fuzzy, and a wrong match gets the verdict not_found with the reason "check the title", never a judgement of the wrong work. But if the same entity also came back from taste discovery on the venue's hits, Qloo's taste data has placed it correctly: accept it and note that its description looks wrong.
   Having a local signal is not by itself a reason to programme a title, and the push night should be a strong taste fit.
   Taste-discovery picks may fill remaining slots as source "taste", noted as not on the shortlist so availability needs checking.
 4. Optional, for at most two broader-appeal slots (a family matinee, a crowd night): qloo_recommend with signal_location and no taste signals, labelled as local crowd-pleasers.
@@ -132,6 +132,7 @@ Use at most ${MAX_TOOL_CALLS} tool calls. Do any check worth doing now rather th
 
 How to read Qloo:
 - A title missing from a ranking has no Qloo signal there. If it is missing from a taste ranking too, Qloo has no data on it at all; say that. Either way it is missing data, not a low score: never give it as a reason to skip or hold a title. Judge a bookable title Qloo has no data on from what you know of it, and say that the verdict is your judgement.
+- A skip weighs both rankings: if the title scored in the city ranking, cite that call too.
 - Within one call, scores less than 0.01 apart are a tie, and per-hit contributions within 0.03 of each other mean no hit leads: do not present such orders as meaningful. Scores from separate calls are not comparable.
 - Popularity (0 to 1) is how widely known a title or act is in Qloo's catalogue. It says nothing about availability or fees.
 - A trend series whose values do not move at all is missing data, not "flat momentum".
@@ -191,6 +192,9 @@ export async function runAgent(
   const callIds = new Set<string>();
   // Titles that went through a successful ranking with a location: the only taste picks that may be programmed.
   const checkedLocally = new Set<string>();
+  // Titles taste discovery returned, and which city ranking scored each title, for the verdict checks.
+  const discovered = new Set<string>();
+  const localCalls = new Map<string, string>();
   // The model sees short handles for entity ids, never the ids themselves.
   const handles = createHandles();
   let submissions = 0;
@@ -209,7 +213,9 @@ export async function runAgent(
     namesIn([envelope.interpretation, envelope.results, envelope.series], names);
     if (name === "qloo_rank" && args.signal_location && envelope.status === "ok" && resultsOf(envelope).length > 0) {
       namesIn((envelope.interpretation as { options?: unknown } | undefined)?.options, checkedLocally);
+      for (const n of namesIn(envelope.results)) localCalls.set(n, callId);
     }
+    if (name === "qloo_recommend" && !args.signal_location && Array.isArray(args.signals) && envelope.status === "ok") namesIn(envelope.results, discovered);
     emit({
       type: "tool_result",
       call_id: callId,
@@ -265,13 +271,13 @@ export async function runAgent(
     for (const use of uses) {
       if (use.name === "submit_programme") {
         const submitted = use.input as Programme;
-        const problems = checkProgramme(submitted, { month: venue.month, slots: venue.slots, names, callIds, shortlist: venue.shortlist, checkedLocally });
-        if (problems.length && ++submissions < 2) {
+        const problems = checkProgramme(submitted, { month: venue.month, slots: venue.slots, names, callIds, shortlist: venue.shortlist, checkedLocally, discovered, localCalls, kind: venue.kind });
+        // Up to two corrections; a third miss is published with its problems stated, rather than lost.
+        if (problems.length && ++submissions < 3) {
           results.push({ type: "tool_result", tool_use_id: use.id, is_error: true,
             content: `Not accepted. Fix these and call submit_programme again:\n- ${problems.join("\n- ")}` });
           continue;
         }
-        // A second miss is published with the problems stated, rather than lost.
         programme = problems.length ? { ...submitted, limits: [...problems.map((x) => `Marquee's checks: ${x}`), ...submitted.limits] } : submitted;
         emit({ type: "programme", programme });
         results.push({ type: "tool_result", tool_use_id: use.id, content: "Programme received." });

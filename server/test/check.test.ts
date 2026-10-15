@@ -127,3 +127,31 @@ describe("missing data as the only reason", () => {
     expect(problems.join("\n")).toMatch(/rests on missing data/);
   });
 });
+
+describe("round 5 checks", () => {
+  const shortlisted = { ...known, shortlist: ["Paterson", "Old Joy"] };
+  it("does not let a title Qloo's own taste discovery returned be called a wrong match", () => {
+    const p = { ...programme([event({ source: "shortlist" }), event({ featured: ["Columbus"], date: "2026-11-07", when: "Week 1, Saturday evening" })]),
+      shortlist_notes: [{ title: "Paterson", verdict: "programmed" as const, reason: "", evidence: [] },
+        { title: "Old Joy", verdict: "not_found" as const, reason: "Check the title: the description looks wrong.", evidence: [] }] };
+    expect(checkProgramme(p, { ...shortlisted, discovered: new Set(["Old Joy"]) }).join("\n")).toMatch(/"Old Joy" came back from taste discovery/);
+  });
+  it("rejects counts in the headline and summary", () => {
+    const p = { ...programme([event(), event({ featured: ["Columbus"], date: "2026-11-07", when: "Week 1, Saturday evening" })]),
+      headline: "Five Thursday evenings of quiet films", summary: ["Two picks are not on your list."] };
+    const problems = checkProgramme(p, known).join("\n");
+    expect(problems).toMatch(/headline states a count/);
+    expect(problems).toMatch(/summary states a count/);
+  });
+  it("asks a skip to cite the city ranking that scored the title", () => {
+    const p = { ...programme([event({ source: "shortlist" }), event({ featured: ["Columbus"], date: "2026-11-07", when: "Week 1, Saturday evening" })]),
+      shortlist_notes: [{ title: "Paterson", verdict: "programmed" as const, reason: "", evidence: [] },
+        { title: "Old Joy", verdict: "skip" as const, reason: "Last on taste.", evidence: ["q1"] }] };
+    expect(checkProgramme(p, { ...shortlisted, localCalls: new Map([["old joy", "q2"]]) }).join("\n")).toMatch(/"Old Joy" is skipped without citing q2/);
+  });
+  it("does not call an act booked when it only appears on records nights", () => {
+    const p = { ...programme([event({ source: "shortlist", format: "Listening session, records played" }), event({ featured: ["Columbus"], date: "2026-11-07", when: "Week 1, Saturday evening" })]),
+      shortlist_notes: [{ title: "Paterson", verdict: "programmed" as const, reason: "", evidence: [] }, { title: "Old Joy", verdict: "reserve" as const, reason: "No slot.", evidence: [] }] };
+    expect(checkProgramme(p, { ...shortlisted, kind: "music_bar" }).join("\n")).toMatch(/"Paterson" is marked programmed but only appears on a records night/);
+  });
+});

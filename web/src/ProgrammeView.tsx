@@ -4,6 +4,7 @@ import { dateFor, toIcs, toMarkdown } from "./calendar";
 import { Cite } from "./Cite";
 import { comparisons } from "./evidence";
 import { TasteVsPlace } from "./TasteVsPlace";
+import { featuredVerb, soundtrackTitle, verdictLabels } from "./labels";
 import { WithoutQloo } from "./WithoutQloo";
 import type { AgentEvent, Programme, ProgrammeEvent, ShortlistNote, VenueInput } from "./types";
 
@@ -13,7 +14,7 @@ const SOURCE: Record<NonNullable<ProgrammeEvent["source"]>, string> = {
   local: "Local crowd-pleaser",
   reprise: "Reprise",
 };
-const VERDICT: Record<ShortlistNote["verdict"], string> = { programmed: "Programmed", featured: "Played, not booked", reserve: "Reserve", skip: "Skip", not_found: "Not found" };
+
 
 function download(name: string, type: string, body: string) {
   const url = URL.createObjectURL(new Blob([body], { type }));
@@ -40,11 +41,12 @@ export function ProgrammeView({ programme, venue, events }: { programme: Program
     ...(programme.soundtrack?.length ? [`It found ${programme.soundtrack.length} musicians this audience over-indexes on.`] : []),
   ];
   const [copied, setCopied] = useState(false);
+  const VERDICT = verdictLabels(venue.kind);
   // The take / reserve / skip line comes from the verdicts themselves, so the summary can never contradict them.
   const byVerdict = (v: ShortlistNote["verdict"]) => (programme.shortlist_notes ?? []).filter((n) => n.verdict === v).map((n) => n.title);
   const verdictLine = programme.shortlist_notes?.length ? [
     byVerdict("programmed").length ? `Book ${byVerdict("programmed").join(", ")}.` : "",
-    byVerdict("featured").length ? `Play ${byVerdict("featured").join(", ")} on record.` : "",
+    byVerdict("featured").length ? `${featuredVerb(venue.kind)} ${byVerdict("featured").join(", ")}.` : "",
     byVerdict("reserve").length ? `Hold ${byVerdict("reserve").join(", ")} in reserve.` : "",
     byVerdict("skip").length ? `Pass on ${byVerdict("skip").join(", ")}.` : "",
     byVerdict("not_found").length ? `Check the titles of ${byVerdict("not_found").join(", ")}.` : "",
@@ -117,7 +119,7 @@ export function ProgrammeView({ programme, venue, events }: { programme: Program
           </li>
         ))}
       </ol>
-      {baseline && <WithoutQloo ours={programme} theirs={baseline} second={baselineEvent?.second} city={evidence[0]?.location ?? venue.location}
+      {baseline && <WithoutQloo labels={VERDICT} ours={programme} theirs={baseline} second={baselineEvent?.second} city={evidence[0]?.location ?? venue.location}
         informed={informed} localSeen={evidence.some((c) => c.rows.some((r) => r.local !== null))} profilesSeen={profiles > 0} />}
       {(programme.partners?.length || programme.audience_check) ? (
         <div className="two">
@@ -134,7 +136,7 @@ export function ProgrammeView({ programme, venue, events }: { programme: Program
           ) : null}
           {programme.soundtrack?.length ? (
             <section className="panel">
-              <h3>Pre-show soundtrack</h3>
+              <h3>{soundtrackTitle(venue.kind)}</h3>
               <p className="viz-sub">Musicians this audience over-indexes on, from Qloo: a playlist for the lobby, or a themed night.</p>
               <p>{programme.soundtrack.map((a) => a.name).join(" · ")} {programme.soundtrack[0]?.evidence.length ? <><Cite text={programme.soundtrack[0].evidence.join(", ")} /></> : null}</p>
             </section>
