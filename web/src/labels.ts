@@ -14,5 +14,5 @@ export const featuredVerb = (kind: VenueKind) => (kind === "bookshop" ? "Put on 
 /** Why a held title is held, as code checked it against the data (see the server's holdProblem). */
 export const heldLabel = (h: NonNullable<ShortlistNote["held_for"]>, city: string): string => ({
   taste: "weaker taste fit", local: `weaker in ${city}`, audience: "audience profile", size: "too big for the room",
-  same_act: "same act as another night", format: "format", rights: "rights", slots: "no slot left",
+  same_act: "same act as another night", format: "format", judgement: "Marquee's judgement", rights: "rights", slots: "no slot left",
 })[h];

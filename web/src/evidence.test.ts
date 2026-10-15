@@ -19,9 +19,9 @@ describe("comparisons", () => {
     const [c] = comparisons(events, { featured: ["Film 4"]});
     expect(c).toMatchObject({ kind: "discovery", location: "Madrid", tasteCall: "q1", localCall: "q2" });
     expect(c.rows).toEqual([
-      { id: "ID-2", name: "Film 2", taste: 1, local: 2, programmed: false },
-      { id: "ID-3", name: "Film 3", taste: 2, local: null, programmed: false },
-      { id: "ID-4", name: "Film 4", taste: 3, local: 1, programmed: true },
+      { id: "ID-2", name: "Film 2", taste: 1, local: 2, programmed: false, tasteTie: false, localTie: false },
+      { id: "ID-3", name: "Film 3", taste: 2, local: null, programmed: false, tasteTie: false, localTie: false },
+      { id: "ID-4", name: "Film 4", taste: 3, local: 1, programmed: true, tasteTie: false, localTie: false },
     ]);
   });
 
@@ -35,6 +35,17 @@ describe("comparisons", () => {
     const [c] = comparisons(events, { featured: []});
     expect(c).toMatchObject({ kind: "shortlist", location: "London" });
     expect(c.rows.map((r) => [r.name, r.taste, r.local])).toEqual([["Film 6", 1, 2], ["Film 5", 2, 1]]);
+  });
+
+  it("marks a title within 0.01 of the one above it as tied, in each ranking", () => {
+    const events = [
+      call("q1", "qloo_rank", { options: ["Film 5", "Film 6"], signals: ["H"] }),
+      result("q1", "qloo_rank", { interpretation: options([5, 6]), results: [item(6, 0.9), item(5, 0.895)] }),
+      call("q2", "qloo_rank", { options: ["Film 5", "Film 6"], signals: ["H"], signal_location: "London" }),
+      result("q2", "qloo_rank", { interpretation: options([5, 6]), results: [item(5, 0.9), item(6, 0.85)] }),
+    ];
+    const [c] = comparisons(events, { featured: []});
+    expect(c.rows.map((r) => [r.name, r.tasteTie, r.localTie])).toEqual([["Film 6", false, false], ["Film 5", true, false]]);
   });
 
   it("ignores a local ranking that returned nothing, keeping the one that worked", () => {

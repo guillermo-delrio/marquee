@@ -13,7 +13,7 @@ export const MODEL = process.env.MARQUEE_MODEL ?? "claude-sonnet-5-5";
 const PRICE = { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5 };
 const MAX_TOOL_CALLS = 18;
 const MAX_TURNS = 12;
-// A run normally costs about $0.25-0.30. Past SOFT_COST the agent is told to submit; past HARD_COST the run stops.
+// A plan normally costs about $0.25-0.35 before the two control runs. Past SOFT_COST the agent is told to submit; past HARD_COST the run stops.
 const SOFT_COST_USD = 0.3;
 const HARD_COST_USD = 0.5;
 
@@ -48,6 +48,7 @@ const PROGRAMME_SCHEMA = {
               properties: { call_id: { type: "string" }, claim: { type: "string" } },
             },
           },
+          on_record: { type: "boolean", description: "True when the featured act or title is only played on record (a listening or DJ night of their records), not booked in person." },
           confidence: { type: "string", enum: ["high", "medium", "low"] },
           source: {
             type: "string",
@@ -77,7 +78,7 @@ const PROGRAMME_SCHEMA = {
     push: { type: "string", description: "Date (YYYY-MM-DD) of the one event to push hardest." },
     soundtrack: {
       type: "array",
-      description: "Up to five musicians from the soundtrack call that this audience over-indexes on, named as returned, for a pre-show playlist or themed night.",
+      description: "Up to five musicians from the soundtrack call, named as returned, for a pre-show playlist or themed night.",
       items: { type: "object", required: ["name", "evidence"], properties: { name: { type: "string" }, evidence: { type: "array", items: { type: "string" } } } },
     },
     audience_check: {
@@ -97,11 +98,11 @@ const PROGRAMME_SCHEMA = {
           evidence: { type: "array", items: { type: "string" }, description: "Call ids." },
           same_act_as: {
             type: "array", items: { type: "string" },
-            description: "Music bars: other acts in the programme or on the list that share members with this one (a band and its leader's own project), as named there. Empty if none.",
+            description: "Required for music bars: other acts in the programme or on the list that share members with this one (a band and its leader's own project, a duo and its members), as named there. Empty if none.",
           },
           held_for: {
-            type: "string", enum: ["taste", "local", "audience", "size", "same_act", "format", "rights", "slots"],
-            description: "Required for skip, reserve, or featured in the programme (played, not booked): what holds the title back, checked against the data. taste: a weaker taste fit than the booked titles; local: weaker in the city ranking; audience: its audience profile fits the venue's audience worse (needs its qloo_audience_demographics call); size: more widely known than every booked act (Qloo popularity), so too big for the room; same_act: shares members with an act in the programme (list it in same_act_as); format: its length, rating or form does not suit the slots (cinemas and bookshops); rights: availability; slots: every slot went to stronger fits.",
+            type: "string", enum: ["taste", "local", "audience", "size", "same_act", "format", "judgement", "rights", "slots"],
+            description: "Required for skip, reserve, or featured in the programme (played, not booked): what holds the title back, checked against the data. taste: a weaker taste fit than the booked titles; local: weaker in the city ranking; audience: its audience profile fits the venue's audience worse (needs its qloo_audience_demographics call); size: more widely known than every booked act (Qloo popularity), so too big for the room; same_act: shares members with an act in the programme (list it in same_act_as); format: its length, rating or form does not suit the slots (cinemas and bookshops); judgement: only for a title no ranking scored, Marquee's own view that it fits worse than the booked titles; rights: availability; slots: every slot went to stronger fits.",
           },
         },
       },
@@ -133,16 +134,16 @@ If the venue gives a shortlist (titles it can actually book this month), it is t
   Taste-discovery picks may fill remaining slots as source "taste", noted as not on the shortlist so availability needs checking.
 4. Optional, for at most two broader-appeal slots (a family matinee, a crowd night): qloo_recommend with signal_location and no taste signals, labelled as local crowd-pleasers.
 5. Co-promotion partners: qloo_recommend with target_type "place", signals = the resolved hits, filter_location = the venue's location as given (neighbourhoods work here; fall back to the city if it returns nothing), include_tags = one place-category tag id that suits a pairing (for example "urn:tag:category:place:bar" or "urn:tag:category:place:cafe"), limit 10. Keep only places whose address is in or next to the venue's neighbourhood or borough (results can spill into neighbouring areas; check the postcode), that look independent and fit specific events, each with one concrete idea. Never a competitor (${t.competitor}), a chain, a hotel or an institutional cafeteria. Give each partner's address as Qloo returned it.${t.soundtrack ? `
-6. Soundtrack: qloo_recommend with target_type "artist", signals = the resolved hits, limit 10: musicians this audience over-indexes on, for a pre-show playlist or a themed night. Put up to five in soundtrack.` : ""}
-7. Audience check: qloo_audience_demographics (entity_type "${t.type}") for the two lead picks. Values are skews against the general population (positive means over-represented).
+6. Soundtrack: qloo_recommend with target_type "artist", signals = the resolved hits, limit 10: musicians with high affinity for this taste, for a pre-show playlist or a themed night. Put up to five in soundtrack.` : ""}
+7. Audience check: qloo_audience_demographics (entity_type "${t.type}") for the two lead picks. Values are skews against the general population (positive means over-represented), not shares of the crowd. When every profiled pick is negative in a band, the data cannot tell them apart there: say so instead of ranking them on it. Compare picks' audiences (best, strongest, better) only among picks you profiled, and give each pick one consistent pitch everywhere it appears. A profile with several bands at exactly 0 is sparse: say so rather than call its skew strong.
 8. Optional: ${t.trends ? `qloo_trends for the top picks over the six months to the date given as today, and ` : ""}qloo_where_popular for the lead pick within the venue's city (it often returns nothing).
 Use at most ${MAX_TOOL_CALLS} tool calls. Do any check worth doing now rather than recommending it to the venue. Then call submit_programme exactly once.
 
 How to read Qloo:
 - A title missing from a ranking has no Qloo signal there. If it is missing from a taste ranking too, Qloo has no data on it at all; say that. Either way it is missing data, not a low score: never give it as a reason to skip or hold a title. Judge a bookable title Qloo has no data on from what you know of it, and say that the verdict is Marquee's judgement.
-- Every held title (skip, reserve, or played but not booked) gets a held_for that the rankings bear out: code compares it with the taste and city rankings. A title that out-ranks a booked title on taste and has no local data is booked, unless its audience profile, its size, a shared act or rights hold it. A title Qloo has no data on at all may be held for slots when every booked title has Qloo evidence: say plainly that this is Marquee's policy of booking on evidence first, not a judgement of the title.
+- Every held title (skip, reserve, or played but not booked) gets a held_for that the rankings bear out: code compares it with the taste and city rankings. A title that out-ranks a booked title on taste and has no local data is booked, unless its audience profile, its size, a shared act or rights hold it. A title no ranking scored is judged on what you know of it, as you would a taste pick: one closely tied to the venue's hits (shared members, the same scene or director) is a strong fit and should be booked. Hold it only with held_for judgement, saying why it fits worse than the booked titles, never because the others have data.
 - A skip weighs both rankings: if the title scored in the city ranking, cite that call too.
-- Within one call, scores less than 0.01 apart are a tie, and per-hit contributions within 0.03 of each other mean no hit leads: do not present such orders as meaningful. Scores from separate calls are not comparable.
+- Within one call, scores less than 0.01 apart are a tie, so never call a tied title first, top or strongest (say joint top or a near tie), and when every score sits in a narrow band (all within about 0.05) call the differences small rather than "weaker" or "stronger"; and per-hit contributions within 0.03 of each other mean no hit leads: do not present such orders as meaningful. Scores from separate calls are not comparable.
 - Popularity (0 to 1) is how widely known a title or act is in Qloo's catalogue. It says nothing about availability or fees.
 - A trend series whose values do not move at all is missing data, not "flat momentum".
 
@@ -216,6 +217,7 @@ export async function runAgent(
   const discovered = new Set<string>();
   const localCalls = new Map<string, string>();
   const tasteScores = new Map<string, { score: number; callId: string; popularity?: number }>();
+  const localScores = new Map<string, { score: number; callId: string }>();
   const callNames = new Map<string, Set<string>>();
   // Age skews per profiled title, and entity names by id so a profile (asked for by id) can be named.
   const ages = new Map<string, Record<string, number>>();
@@ -255,6 +257,9 @@ export async function runAgent(
     if (name === "qloo_rank" && args.signal_location && envelope.status === "ok" && resultsOf(envelope).length > 0) {
       namesIn((envelope.interpretation as { options?: unknown } | undefined)?.options, checkedLocally);
       for (const n of namesIn(envelope.results)) localCalls.set(n, callId);
+      for (const r of resultsOf(envelope) as { name?: unknown; affinity?: unknown }[]) {
+        if (typeof r.name === "string" && typeof r.affinity === "number") localScores.set(r.name, { score: r.affinity, callId });
+      }
     }
     if (name === "qloo_recommend" && !args.signal_location && Array.isArray(args.signals) && envelope.status === "ok") namesIn(envelope.results, discovered);
     emit({
@@ -312,7 +317,7 @@ export async function runAgent(
     for (const use of uses) {
       if (use.name === "submit_programme") {
         const submitted = use.input as Programme;
-        const problems = checkProgramme(submitted, { month: venue.month, slots: venue.slots, names, callIds, shortlist: venue.shortlist, checkedLocally, discovered, localCalls, tasteScores, callNames, ages, audience: venue.audience, kind: venue.kind });
+        const problems = checkProgramme(submitted, { month: venue.month, slots: venue.slots, names, callIds, shortlist: venue.shortlist, checkedLocally, discovered, localCalls, tasteScores, localScores, callNames, ages, audience: venue.audience, kind: venue.kind });
         // Up to two corrections; a third miss is published with its problems stated, rather than lost.
         if (problems.length && ++submissions < 3) {
           results.push({ type: "tool_result", tool_use_id: use.id, is_error: true,

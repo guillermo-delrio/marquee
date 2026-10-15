@@ -33,6 +33,8 @@ export const venueBands = (audience = "") => {
   return m ? BANDS.filter(([, lo, hi]) => lo <= Number(m[2]) && hi >= Number(m[1])).map(([k]) => k) : [];
 };
 
+const MISSING = /\bno (?:[\w-]+ )?(?:signal|data)\b|\bnot ranked\b|\bunranked\b|\bevidenc\w*|\b(?:with|had|have|has) (?:a |an )?(?:[\w-]+ )?(?:signal|data|rankings?|scores?)\b|\brankings (?:behind|scored)\b/i;
+
 /** Scores less than this apart within one call are a tie. */
 const TIE = 0.01;
 
@@ -50,6 +52,8 @@ export function checkProgramme(
     localCalls?: Map<string, string>;
     /** For each title the taste ranking of the shortlist (no location) scored, its affinity and the call. */
     tasteScores?: Map<string, { score: number; callId: string; popularity?: number }>;
+    /** For each title a city ranking scored, its affinity there and the call. */
+    localScores?: Map<string, { score: number; callId: string }>;
     /** The names each call returned, so a citation can be checked against the call it names. */
     callNames?: Map<string, Set<string>>;
     /** Each profiled title's age skews (Qloo's keys, such as "25_to_29"), from qloo_audience_demographics. */
@@ -84,6 +88,24 @@ export function checkProgramme(
     const weaker = own ? programmedOnTaste.filter((x) => own.score - x.score >= TIE) : [];
     const h = note.held_for;
     if (!h) return `"${title}" (${note.verdict}) has no held_for; say what holds it back.`;
+    // A title no ranking scored is judged on what Marquee knows of it, like a taste pick: never held because others have data.
+    const noData = !own && !hasLocal;
+    if (noData && (h === "slots" || h === "taste" || h === "local" || h === "audience" || h === "size")) {
+      return `"${title}": no ranking scored it, so ${h} cannot be checked and having no data is not a reason. Judge it from what Marquee knows of it (held_for judgement, saying why it is a weaker fit than the booked titles), or book it.`;
+    }
+    // Booked titles not clearly ahead of this one on taste (tied or behind): the ones a hold must beat on its own grounds.
+    const notAhead = own ? programmedOnTaste.filter((x) => x.score - own.score < TIE) : [];
+    const tied = own ? programmedOnTaste.find((x) => Math.abs(x.score - own.score) < TIE) : undefined;
+    if (h === "taste" && tied) return `"${title}" is held for taste, but it is tied with booked "${tied.title}" on taste (${own!.callId}): a tie is not a weaker fit.`;
+    if (h === "local" && hasLocal && known.localScores) {
+      const mine = lookup(known.localScores, title)!;
+      const ahead = (p.shortlist_notes ?? []).filter((n) => n.verdict === "programmed").some((n) => {
+        const l = lookup(known.localScores, n.title);
+        return l && l.callId === mine.callId && l.score - mine.score >= TIE;
+      });
+      if (mine && !ahead) return `"${title}" is held for its local fit, but no booked title is clearly ahead of it in the city ranking (${mine.callId}).`;
+    }
+    if (h === "judgement" && !noData) return `"${title}" was scored by Qloo, so hold it for what the data shows, not for judgement.`;
     if (h === "local" && !hasLocal) return `"${title}" is held for its local fit, but no city ranking scored it: no local data is not a weak local fit.`;
     if (h === "taste" && !own) return `"${title}" is held for its taste fit, but the taste ranking did not score it: no data is not a weak fit.`;
     if ((h === "taste" || h === "slots" || h === "local") && weaker.length) {
@@ -97,10 +119,10 @@ export function checkProgramme(
       if (!mine) return `"${title}" is held for its audience, but no audience profile was fetched for it.`;
       // Every booked title it beats on taste needs a profile that fits the venue's ages better; an unprofiled one
       // would mean the missing profile decided.
-      const against = venueBands(known.audience).length ? weaker.find((x) => { const a = lookup(known.ages, x.title); return !a || fit(a) <= fit(mine); }) : undefined;
+      const against = venueBands(known.audience).length ? notAhead.find((x) => { const a = lookup(known.ages, x.title); return !a || fit(a) <= fit(mine); }) : undefined;
       if (against) return lookup(known.ages, against.title)
-        ? `"${title}" is held for its audience, but its profile fits the venue's ${known.audience} as well as or better than booked "${against.title}", which it out-ranks on taste.`
-        : `"${title}" is held for its audience, but booked "${against.title}", which it out-ranks on taste, has no audience profile to compare.`;
+        ? `"${title}" is held for its audience, but its profile fits the venue's ${known.audience} as well as or better than booked "${against.title}", which is no better on taste.`
+        : `"${title}" is held for its audience, but booked "${against.title}", no better on taste, has no audience profile to compare.`;
     }
     if (h === "size") {
       const pop = own?.popularity;
@@ -134,23 +156,48 @@ export function checkProgramme(
         if (note.verdict === "skip" && localCall && !note.evidence.includes(localCall)) {
           problems.push(`"${title}" is skipped without citing ${localCall}, the city ranking that scored it; weigh both rankings.`);
         }
+        if (known.kind === "music_bar" && !Array.isArray(note.same_act_as)) {
+          problems.push(`"${title}" has no same_act_as: list the listed or programmed acts that share members with it, or give an empty list.`);
+        }
         if (note.verdict === "programmed" && known.kind === "music_bar") {
           const nights = p.events.filter((e) => e.featured.some((f) => normalName(f) === normalName(title)));
-          if (nights.length && nights.every((e) => RECORDS.test(e.format))) problems.push(`"${title}" is marked programmed but only appears on a records night; use featured (played, not booked) or book it live.`);
+          // A night is on record when the agent says so; an act booked in person to DJ is booked, whatever the format says.
+          const onRecord = (e: (typeof nights)[number]) => e.on_record ?? RECORDS.test(e.format);
+          if (nights.length && nights.every(onRecord)) problems.push(`"${title}" is marked programmed but only appears on a records night; use featured (played, not booked) or book it live.`);
         }
         const benched = note.verdict === "skip" || note.verdict === "reserve" || (note.verdict === "featured" && inProgramme);
         if (benched) {
           const problem = holdProblem(note, title);
           if (problem) problems.push(problem);
+          // The page already shows which titles have no local data; in a held title's reason it reads as a mark against it.
+          if (MISSING.test(note.reason)) problems.push(`"${title}": leave the missing data ("${note.reason.match(MISSING)![0]}") out of a held title's reason; the page shows it.`);
         }
       }
     }
   }
   // Acts that share members are one act: one night between them, records nights included.
   for (const n of p.shortlist_notes ?? []) for (const other of n.same_act_as ?? []) {
-    if (normalName(other) !== normalName(n.title) && featured.has(normalName(n.title)) && featured.has(normalName(other))) {
+    const nightsOf = (name: string) => new Set(p.events.filter((e) => e.featured.some((f) => normalName(f) === normalName(name))).map((e) => e.date));
+    const mine = nightsOf(n.title);
+    const theirs = nightsOf(other);
+    // Both on the same single night is that one night; anything more is two nights for one act.
+    if (normalName(other) !== normalName(n.title) && mine.size && theirs.size && new Set([...mine, ...theirs]).size > 1) {
       problems.push(`"${n.title}" and "${other}" share members, so they are one act; give them one night between them.`);
     }
+  }
+  // The night to push hardest goes on a Friday or Saturday when the plan has any.
+  const weekday = (d?: string) => (d ? new Date(`${d}T12:00:00Z`).getUTCDay() : -1);
+  if (p.push && p.events.some((e) => [5, 6].includes(weekday(e.date))) && ![5, 6].includes(weekday(p.push))) {
+    problems.push(`The push night ${p.push} is not a Friday or Saturday; push a weekend night.`);
+  }
+  // Weekends first: a second weeknight event while a Friday or Saturday of the month is still free.
+  const used = new Set(p.events.map((e) => e.date));
+  const [y, m] = known.month.split("-").map(Number);
+  const freeWeekend = Array.from({ length: new Date(Date.UTC(y, m, 0)).getUTCDate() }, (_, i) => `${known.month}-${String(i + 1).padStart(2, "0")}`)
+    .filter((d) => [5, 6].includes(weekday(d)) && !used.has(d));
+  const weeknights = p.events.filter((e) => [1, 2, 3, 4].includes(weekday(e.date)));
+  if (weeknights.length > 1 && freeWeekend.length) {
+    problems.push(`${weeknights.length} events are on weeknights (${weeknights.map((e) => e.date).join(", ")}) while ${freeWeekend.join(", ")} ${freeWeekend.length === 1 ? "is" : "are"} free; move all but one to a free Friday or Saturday, within the venue's stated days.`);
   }
   if (p.events.length !== known.slots) problems.push(`The programme must have exactly ${known.slots} events, not ${p.events.length}.`);
   for (const partner of p.partners ?? []) {

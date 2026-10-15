@@ -43,7 +43,7 @@ export function WithoutQloo({ labels: VERDICT, ours, theirs, second, city, infor
   // rights or a shared act (judgement). A title Qloo never scored is held by the evidence-first policy, not by data.
   const scoredKeys = new Set(scored.map(key));
   const restsOn = (n: ShortlistNote) => !scoredKeys.has(key(n.title)) ? "No Qloo data"
-    : ["format", "rights", "same_act"].includes(n.held_for ?? "") || !n.evidence.length ? "Judgement" : "Qloo data";
+    : ["format", "judgement", "rights", "same_act"].includes(n.held_for ?? "") || !n.evidence.length ? "Judgement" : "Qloo data";
   const fromQloo = differ.filter((v) => restsOn(v.ours) === "Qloo data").length;
   const unstable = verdicts.filter((v) => v.theirs && v.again && v.theirs !== v.again).length;
   const day = (iso: string) => new Date(`${iso}T12:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });

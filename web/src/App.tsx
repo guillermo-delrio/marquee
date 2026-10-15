@@ -112,7 +112,7 @@ export default function App() {
           {sampleShown && venue && (
             <p className="sample-note">
               A saved sample month for a {venue.kind.replace("_", " ")} in {venue.location}. Change the venue in the form to plan your own,
-              or open another sample.
+              or open another sample. The samples use 2023–24 titles: Qloo does not yet score most 2025 releases.
             </p>
           )}
           {!venue && (

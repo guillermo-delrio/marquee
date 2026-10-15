@@ -28,7 +28,7 @@ describe("checkProgramme", () => {
   });
   it("matches featured names without regard to case, quotes or dashes", () => {
     const names = new Set(["Emma‐Jean Thackray", "Tomorrow, and Tomorrow, and Tomorrow"]);
-    expect(checkProgramme(programme([event({ featured: ["Emma-Jean Thackray"] }), event({ featured: ["tomorrow, and tomorrow, and tomorrow"], date: "2026-11-12" })]),
+    expect(checkProgramme(programme([event({ featured: ["Emma-Jean Thackray"] }), event({ featured: ["tomorrow, and tomorrow, and tomorrow"], date: "2026-11-07", when: "Week 1, Saturday evening" })]),
       { ...known, names })).toEqual([]);
   });
 });
@@ -78,7 +78,7 @@ describe("verdict rules", () => {
   it("accepts featured for a title played but not booked", () => {
     expect(checkProgramme({ ...programme(two), shortlist_notes: [
       { title: "Paterson", verdict: "featured", reason: "A listening night: too big to book live.", evidence: [], held_for: "format" },
-      { title: "Old Joy", verdict: "reserve", reason: "Fits the taste but no slot is left.", evidence: [], held_for: "slots" },
+      { title: "Old Joy", verdict: "reserve", reason: "In Marquee's judgement a weaker fit.", evidence: [], held_for: "judgement" },
     ] }, shortlisted)).toEqual([]);
   });
 });
@@ -128,7 +128,8 @@ describe("why a title is held, checked against the rankings", () => {
     expect(note("slots", { tasteScores: new Map([["Old Joy", { score: 0.945, callId: "q1" }], ["Paterson", { score: 0.94, callId: "q1" }]]) })).toBe("");
   });
   it("does not let a title with no taste data be held for taste", () => {
-    expect(note("taste", { tasteScores: new Map([["Paterson", { score: 0.94, callId: "q1" }]]) })).toMatch(/taste ranking did not score it/);
+    expect(note("taste", { tasteScores: new Map([["Paterson", { score: 0.94, callId: "q1" }]]) })).toMatch(/no ranking scored it, so taste cannot be checked/);
+    expect(note("taste", { tasteScores: new Map([["Paterson", { score: 0.94, callId: "q1" }]]), localCalls: new Map([["Old Joy", "q2"]]) })).toMatch(/taste ranking did not score it/);
   });
 });
 
@@ -185,7 +186,7 @@ describe("holds for audience", () => {
   it("rejects a hold when the held title fits the venue's ages better than a weaker booked one", () => {
     expect(hold(new Map([["Old Joy", { "25_to_29": -0.1, "30_to_34": -0.02 }], ["Paterson", { "25_to_29": -0.13, "30_to_34": -0.1 }]])))
       .toMatch(/fits the venue's people 25-34 as well as or better than booked "Paterson"/);
-    expect(hold(new Map([["Old Joy", { "25_to_29": -0.3 }]]))).toMatch(/booked "Paterson", which it out-ranks on taste, has no audience profile/);
+    expect(hold(new Map([["Old Joy", { "25_to_29": -0.3 }]]))).toMatch(/booked "Paterson", no better on taste, has no audience profile/);
     expect(hold(new Map([["Old Joy", { "25_to_29": -0.3, "30_to_34": -0.2 }], ["Paterson", { "25_to_29": 0.1, "30_to_34": 0 }]]))).toBe("");
   });
   it("reads the venue's age bands from its audience", () => {
@@ -199,5 +200,75 @@ describe("acts that share members", () => {
     const p = { ...programme([event(), event({ featured: ["Columbus"], date: "2026-11-07", when: "Week 1, Saturday evening" })]),
       shortlist_notes: [{ title: "Paterson", verdict: "programmed" as const, reason: "", evidence: [], same_act_as: ["Columbus"] }] };
     expect(checkProgramme(p, known).join("\n")).toMatch(/"Paterson" and "Columbus" share members/);
+    const together = { ...programme([event({ featured: ["Paterson", "Columbus"] }), event({ featured: ["Old Joy"], date: "2026-11-07", when: "Week 1, Saturday evening" })]),
+      shortlist_notes: p.shortlist_notes };
+    expect(checkProgramme(together, { ...known, names: new Set([...known.names, "Old Joy"]) })).toEqual([]);
+  });
+});
+
+describe("titles no ranking scored", () => {
+  const base = { ...known, shortlist: ["Paterson", "Old Joy"], tasteScores: new Map([["Paterson", { score: 0.94, callId: "q1" }]]) };
+  const two = [event({ source: "shortlist" }), event({ featured: ["Columbus"], date: "2026-11-07", when: "Week 1, Saturday evening" })];
+  const hold = (held_for: ShortlistNote["held_for"], title = "Old Joy") => checkProgramme({ ...programme(two), shortlist_notes: [
+    { title: "Paterson", verdict: title === "Paterson" ? "reserve" : "programmed", reason: "", evidence: [], ...(title === "Paterson" ? { held_for } : {}) },
+    ...(title === "Old Joy" ? [{ title: "Old Joy", verdict: "reserve" as const, reason: "", evidence: [], held_for }] : [{ title: "Old Joy", verdict: "programmed" as const, reason: "", evidence: [] }]),
+  ] }, base).join("\n");
+  it("cannot be held because the others have data", () => {
+    expect(hold("slots")).toMatch(/no ranking scored it, so slots cannot be checked/);
+  });
+  it("can be held on Marquee's judgement, which a scored title cannot", () => {
+    expect(hold("judgement")).not.toMatch(/Old Joy/);
+    expect(hold("judgement", "Paterson")).toMatch(/"Paterson" was scored by Qloo/);
+  });
+});
+
+describe("round 7 checks", () => {
+  const two = [event({ source: "shortlist" }), event({ featured: ["Columbus"], date: "2026-11-07", when: "Week 1, Saturday evening" })];
+  const base = { ...known, shortlist: ["Paterson", "Old Joy"] };
+  const notes = (held: Partial<ShortlistNote>) => [{ title: "Paterson", verdict: "programmed" as const, reason: "", evidence: [] },
+    { title: "Old Joy", verdict: "reserve" as const, reason: "A weaker fit.", evidence: [], ...held }];
+  it("does not accept a tie on taste as a weaker taste fit", () => {
+    const k = { ...base, tasteScores: new Map([["Paterson", { score: 0.786, callId: "q9" }], ["Old Joy", { score: 0.78, callId: "q9" }]]) };
+    expect(checkProgramme({ ...programme(two), shortlist_notes: notes({ held_for: "taste" }) }, k).join("\n")).toMatch(/tied with booked "Paterson" on taste \(q9\)/);
+  });
+  it("holds for local only when a booked title is clearly ahead in the city", () => {
+    const k = { ...base, tasteScores: new Map([["Paterson", { score: 0.9, callId: "q1" }], ["Old Joy", { score: 0.8, callId: "q1" }]]),
+      localCalls: new Map([["Paterson", "q2"], ["Old Joy", "q2"]]) };
+    const run = (p: number) => checkProgramme({ ...programme(two), shortlist_notes: notes({ held_for: "local" }) },
+      { ...k, localScores: new Map([["Paterson", { score: p, callId: "q2" }], ["Old Joy", { score: 0.86, callId: "q2" }]]) }).join("\n");
+    expect(run(0.865)).toMatch(/no booked title is clearly ahead of it in the city ranking \(q2\)/);
+    expect(run(0.9)).toBe("");
+  });
+  it("keeps missing data out of a held title's reason", () => {
+    expect(checkProgramme({ ...programme(two), shortlist_notes: notes({ held_for: "rights", reason: "Rights unclear, and no city signal." }) }, base).join("\n"))
+      .toMatch(/leave the missing data \("no city signal"\) out/);
+    expect(checkProgramme({ ...programme(two), shortlist_notes: notes({ held_for: "slots", reason: "The Fridays went to acts with a London signal." }) }, base).join("\n"))
+      .toMatch(/leave the missing data \("with a London signal"\) out/);
+  });
+  it("puts the push night on a Friday or Saturday", () => {
+    const p = { ...programme([event({ date: "2026-11-05" }), event({ featured: ["Columbus"], date: "2026-11-07", when: "Week 1, Saturday evening" })]), push: "2026-11-05" };
+    expect(checkProgramme(p, known).join("\n")).toMatch(/push night 2026-11-05 is not a Friday or Saturday/);
+    expect(checkProgramme({ ...p, push: "2026-11-07" }, known)).toEqual([]);
+  });
+});
+
+describe("round 7 checks, after the re-runs", () => {
+  it("fills free Fridays and Saturdays before a second weeknight", () => {
+    const p = programme([event({ date: "2026-11-05" }), event({ featured: ["Columbus"], date: "2026-11-12" })]);
+    expect(checkProgramme(p, known).join("\n")).toMatch(/2 events are on weeknights \(2026-11-05, 2026-11-12\) while 2026-11-06/);
+  });
+  it("asks a music bar to say which acts share members", () => {
+    const p = { ...programme([event({ source: "shortlist" }), event({ featured: ["Columbus"], date: "2026-11-07", when: "Week 1, Saturday evening" })]),
+      shortlist_notes: [{ title: "Paterson", verdict: "programmed" as const, reason: "", evidence: [] }] };
+    expect(checkProgramme(p, { ...known, shortlist: ["Paterson"], kind: "music_bar" }).join("\n")).toMatch(/"Paterson" has no same_act_as/);
+  });
+});
+
+describe("records nights", () => {
+  it("accepts an act booked in person to DJ, and flags one only played on record", () => {
+    const run = (on_record: boolean) => checkProgramme({ ...programme([event({ format: "DJ night", on_record }), event({ featured: ["Columbus"], date: "2026-11-07", when: "Week 1, Saturday evening" })]),
+      shortlist_notes: [{ title: "Paterson", verdict: "programmed" as const, reason: "", evidence: [], same_act_as: [] }] }, { ...known, shortlist: ["Paterson"], kind: "music_bar" }).join("\n");
+    expect(run(false)).toBe("");
+    expect(run(true)).toMatch(/only appears on a records night/);
   });
 });

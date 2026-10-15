@@ -15,6 +15,8 @@ export interface VenueInput {
 export interface Evidence { call_id: string; claim: string }
 
 export interface ProgrammeEvent {
+  /** Played on record, not booked in person: no availability to check. */
+  on_record?: boolean;
   title: string;
   when: string;
   /** YYYY-MM-DD; absent in runs saved before it existed. */
@@ -37,7 +39,7 @@ export interface ShortlistNote {
   evidence: string[];
   /** Music bars: acts that share members with this one; they get one night between them. */
   same_act_as?: string[];
-  held_for?: "taste" | "local" | "audience" | "size" | "same_act" | "format" | "rights" | "slots";
+  held_for?: "taste" | "local" | "audience" | "size" | "same_act" | "format" | "judgement" | "rights" | "slots";
 }
 
 export interface Programme {

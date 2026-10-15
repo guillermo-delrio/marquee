@@ -11,6 +11,9 @@ export interface ComparisonRow {
   taste: number;
   /** Position in the local ranking, or null when Qloo has no local data for the title. */
   local: number | null;
+  /** Within 0.01 of the title placed just above it in that ranking: the order between them is not meaningful. */
+  tasteTie: boolean;
+  localTie: boolean;
   programmed: boolean;
 }
 
@@ -66,10 +69,15 @@ export function comparisons(events: AgentEvent[], ctx: { featured: string[] }): 
     const order = tasteOrder(taste);
     const localIds = localItems.map((i) => i.entity_id);
     const names = new Map(options.map((o) => [o.id, o.name]));
+    const score = (call: string) => new Map(itemsOf(results.get(call)!.raw).map((i) => [i.entity_id, i.affinity ?? NaN]));
+    const tasteScore = score(taste.call_id);
+    const localScore = score(local.call_id);
+    const close = (m: Map<string | undefined, number>, a?: string, b?: string) => !!a && !!b && Math.abs(m.get(a)! - m.get(b)!) < 0.01 - 1e-9;
     const rows = order.map((id, i) => {
       const at = localIds.indexOf(id);
       const name = names.get(id) ?? id;
-      return { id, name, taste: i + 1, local: at < 0 ? null : at + 1, programmed: featured.has(norm(name)) };
+      return { id, name, taste: i + 1, local: at < 0 ? null : at + 1, programmed: featured.has(norm(name)),
+        tasteTie: i > 0 && close(tasteScore, order[i - 1], id), localTie: at > 0 && close(localScore, localIds[at - 1], id) };
     });
     const kind = sameShortlist ? "shortlist" : "discovery";
     // A later ranking of the same titles (a retry at city level) replaces an earlier one.

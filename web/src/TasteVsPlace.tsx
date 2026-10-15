@@ -1,7 +1,7 @@
 import { Cite } from "./Cite";
 import type { Comparison } from "./evidence";
 
-const ord = (n: number) => `#${n}`;
+const ord = (n: number, tie = false) => `${tie ? "≈" : ""}#${n}`;
 const at = (pos: number, n: number) => (n < 2 ? 50 : ((pos - 1) / (n - 1)) * 100);
 
 /**
@@ -21,6 +21,7 @@ export function TasteVsPlace({ c }: { c: Comparison }) {
         <p className="viz-sub">
           Position among these {n} titles by your regulars' taste (<Cite text={c.tasteCall} />) and by affinity in {city} (<Cite text={c.localCall} />).
           {withLocal < n && ` Qloo ranks ${withLocal} of ${n} in ${city}; the rest are not ranked there, which is not a low score.`}
+          {c.rows.some((r) => r.tasteTie || r.localTie) && " ≈ marks a score within 0.01 of the one above: a tie, not a real difference."}
         </p>
         <ul className="viz-legend" aria-label="Legend">
           <li><span className="mark ring" aria-hidden /> By taste</li>
@@ -31,7 +32,7 @@ export function TasteVsPlace({ c }: { c: Comparison }) {
       <div className="dumbbells" role="list">
         <div className="db-axis" aria-hidden><span className="db-ends"><span>#1</span><span>#{n}</span></span></div>
         {c.rows.map((r) => {
-          const label = `${r.name}: ${ord(r.taste)} of ${n} by taste, ${r.local ? `${ord(r.local)} of ${withLocal} in ${city}` : `not ranked in ${city}`}`;
+          const label = `${r.name}: ${ord(r.taste)} of ${n} by taste${r.tasteTie ? " (tied)" : ""}, ${r.local ? `${ord(r.local)} of ${withLocal} in ${city}${r.localTie ? " (tied)" : ""}` : `not ranked in ${city}`}`;
           const a = at(r.taste, n);
           const b = r.local ? at(r.local, n) : null;
           return (
@@ -44,7 +45,7 @@ export function TasteVsPlace({ c }: { c: Comparison }) {
                 <span className="mark ring" style={{ left: `${a}%` }} />
                 {b !== null && <span className="mark dot" style={{ left: `${b}%` }} />}
               </span>
-              <span className="db-value">{ord(r.taste)}/{n} → {r.local ? `${ord(r.local)}/${withLocal}` : <em>not ranked</em>}</span>
+              <span className="db-value">{ord(r.taste, r.tasteTie)}/{n} → {r.local ? `${ord(r.local, r.localTie)}/${withLocal}` : <em>not ranked</em>}</span>
             </div>
           );
         })}
@@ -55,7 +56,7 @@ export function TasteVsPlace({ c }: { c: Comparison }) {
           <thead><tr><th scope="col">Title</th><th scope="col">By taste</th><th scope="col">Taste in {city}</th><th scope="col">In programme</th></tr></thead>
           <tbody>
             {c.rows.map((r) => (
-              <tr key={r.id}><td>{r.name}</td><td>{ord(r.taste)}</td><td>{r.local ? ord(r.local) : "not ranked"}</td><td>{r.programmed ? "yes" : ""}</td></tr>
+              <tr key={r.id}><td>{r.name}</td><td>{ord(r.taste, r.tasteTie)}</td><td>{r.local ? ord(r.local, r.localTie) : "not ranked"}</td><td>{r.programmed ? "yes" : ""}</td></tr>
             ))}
           </tbody>
         </table>

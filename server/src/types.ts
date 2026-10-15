@@ -20,6 +20,8 @@ export interface Evidence {
 }
 
 export interface ProgrammeEvent {
+  /** Played on record, not booked in person: no availability to check. */
+  on_record?: boolean;
   title: string;
   when: string;
   /** YYYY-MM-DD; absent in runs saved before it existed. */
@@ -50,7 +52,7 @@ export interface ShortlistNote {
   /** For a held title (skip, reserve, or played but not booked): what holds it back. */
   /** Music bars: acts that share members with this one; they get one night between them. */
   same_act_as?: string[];
-  held_for?: "taste" | "local" | "audience" | "size" | "same_act" | "format" | "rights" | "slots";
+  held_for?: "taste" | "local" | "audience" | "size" | "same_act" | "format" | "judgement" | "rights" | "slots";
 }
 
 export interface Programme {
@@ -69,7 +71,7 @@ export interface Programme {
   partners?: Partner[];
   /** What Qloo's audience profiles say about the lead picks, against the venue's audience. */
   audience_check?: string;
-  /** Musicians the audience over-indexes on, for a pre-show playlist. */
+  /** Musicians with high affinity for the taste, for a pre-show playlist. */
   soundtrack?: { name: string; evidence: string[] }[];
 }
 /** A local place whose audience shares the venue's taste, suggested for co-promotion. */

@@ -2,7 +2,7 @@ import { useState } from "react";
 
 import { dateFor, toIcs, toMarkdown } from "./calendar";
 import { Cite } from "./Cite";
-import { comparisons } from "./evidence";
+import { comparisons, scoreRows } from "./evidence";
 import { TasteVsPlace } from "./TasteVsPlace";
 import { featuredVerb, heldLabel, soundtrackTitle, verdictLabels } from "./labels";
 import { WithoutQloo } from "./WithoutQloo";
@@ -38,7 +38,7 @@ export function ProgrammeView({ programme, venue, events }: { programme: Program
     ...(shortlistLocal ? [`Qloo ranked ${shortlistLocal.rows.filter((r) => r.local !== null).length} of your ${venue.shortlist?.length ?? shortlistLocal.rows.length} bookable titles in ${shortlistLocal.location}${(venue.shortlist?.length ?? 0) > shortlistLocal.rows.length ? ` (${(venue.shortlist?.length ?? 0) - shortlistLocal.rows.length} it could not match or score at all)` : ""}.`] : []),
     ...(profiles ? [`It profiled the audiences of ${profiles} lead pick${profiles === 1 ? "" : "s"}.`] : []),
     ...(programme.partners?.length ? [`It found ${programme.partners.length} nearby places whose audiences share the taste.`] : []),
-    ...(programme.soundtrack?.length ? [`It found ${programme.soundtrack.length} musicians this audience over-indexes on.`] : []),
+    ...(programme.soundtrack?.length ? [`It found ${programme.soundtrack.length} musicians with high affinity for this taste.`] : []),
   ];
   const [copied, setCopied] = useState(false);
   const VERDICT = verdictLabels(venue.kind);
@@ -102,7 +102,7 @@ export function ProgrammeView({ programme, venue, events }: { programme: Program
             <p className="date">
               {fmt.format(date)}, {hhmm(date)}{e.runtime_minutes ? `–${hhmm(new Date(date.getTime() + e.runtime_minutes * 60000))}` : ""}
               {e.version && <span className="source"> · {e.version}</span>}
-              {e.source && <span className="source"> · {SOURCE[e.source]}</span>}
+              {e.source && <span className="source"> · {e.on_record && e.source === "taste" ? "Taste pick · played on record" : SOURCE[e.source]}</span>}
             </p>
             <h3>{e.title}</h3>
             <p className="format">{e.format}</p>
@@ -121,7 +121,7 @@ export function ProgrammeView({ programme, venue, events }: { programme: Program
       </ol>
       {baseline && <WithoutQloo labels={VERDICT} ours={programme} theirs={baseline} second={baselineEvent?.second} city={evidence[0]?.location ?? venue.location}
         informed={informed} localSeen={evidence.some((c) => c.rows.some((r) => r.local !== null))} profilesSeen={profiles > 0}
-        scored={evidence.flatMap((c) => c.rows.map((r) => r.name))} />}
+        scored={events.flatMap((x) => (x.type === "tool_result" && x.name === "qloo_rank" ? scoreRows(x.raw).map((r) => r.name) : []))} />}
       {(programme.partners?.length || programme.audience_check) ? (
         <div className="two">
           {programme.partners?.length ? (
@@ -138,7 +138,7 @@ export function ProgrammeView({ programme, venue, events }: { programme: Program
           {programme.soundtrack?.length ? (
             <section className="panel">
               <h3>{soundtrackTitle(venue.kind)}</h3>
-              <p className="viz-sub">Musicians this audience over-indexes on, from Qloo: a playlist for the lobby, or a themed night.</p>
+              <p className="viz-sub">Musicians with high affinity for this taste, from Qloo: a playlist for the lobby, or a themed night.</p>
               <p>{programme.soundtrack.map((a) => a.name).join(" · ")} {programme.soundtrack[0]?.evidence.length ? <><Cite text={programme.soundtrack[0].evidence.join(", ")} /></> : null}</p>
             </section>
           ) : null}
