@@ -11,7 +11,9 @@ import { VENUE_KINDS, type AgentEvent, type VenueInput } from "./types.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(HERE, "..", "..");
-const OUT = path.join(ROOT, "out");
+// The private cache and the daily counters. On a host whose disk resets, point this at persistent storage (Cloud Run
+// mounts a private bucket here), so samples are not re-run and caps are not reset on every restart.
+const OUT = process.env.MARQUEE_DATA_DIR ?? path.join(ROOT, "out");
 const CACHE = path.join(OUT, "cache");
 const SAMPLES = path.join(ROOT, "samples");
 const WEB = path.join(ROOT, "web", "dist");
