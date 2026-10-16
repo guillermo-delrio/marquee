@@ -214,6 +214,15 @@ export function checkProgramme(
     const unprofiled = pushEvent.featured.filter((f) => ![...profiled].some((n) => normalName(n) === normalName(f)));
     if (unprofiled.length) problems.push(`The push night features ${unprofiled.map((f) => `"${f}"`).join(", ")} with no audience profile requested; profile the push night's pick (qloo_audience_demographics) before pushing it.`);
   }
+  // The push is a strong taste fit: a bookable title in the bottom half of the taste ranking is not pushed, however it
+  // plays in the city.
+  if (pushEvent && known.tasteScores?.size) {
+    const order = [...known.tasteScores.values()].map((t) => t.score).sort((a, b) => b - a);
+    for (const f of pushEvent.featured) {
+      const t = lookup(known.tasteScores, f);
+      if (t && order.indexOf(t.score) + 1 > Math.ceil(order.length / 2)) problems.push(`The push night features "${f}", in the bottom half of the taste ranking (${t.callId}); push a strong taste fit.`);
+    }
+  }
   if (pushEvent && known.ages && venueBands(known.audience).length) {
     for (const f of pushEvent.featured) {
       const a = lookup(known.ages, f);

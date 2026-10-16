@@ -326,3 +326,12 @@ describe("rank talk, not dates", () => {
     expect(run("Top of the London ranking.")).toMatch(/the why says "Top of the London ranking"/);
   });
 });
+
+describe("push night taste", () => {
+  it("does not push a title in the bottom half on taste", () => {
+    const p = { ...programme([event({ date: "2026-11-06", when: "Friday evening" }), event({ featured: ["Columbus"], date: "2026-11-07", when: "Saturday evening" })]), push: "2026-11-07" };
+    const tasteScores = new Map([["Paterson", { score: 0.9, callId: "q9" }], ["Alpha", { score: 0.85, callId: "q9" }], ["Beta", { score: 0.8, callId: "q9" }], ["Columbus", { score: 0.7, callId: "q9" }]]);
+    expect(checkProgramme(p, { ...known, tasteScores }).join("\n")).toMatch(/"Columbus", in the bottom half of the taste ranking \(q9\)/);
+    expect(checkProgramme({ ...p, push: "2026-11-06" }, { ...known, tasteScores }).join("\n")).not.toMatch(/bottom half/);
+  });
+});

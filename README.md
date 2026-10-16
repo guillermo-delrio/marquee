@@ -51,19 +51,19 @@ One live run, from 15 October 2026, step by step: the cinema sample the demo ope
 | q1, q2 | `qloo_describe` `{entity: "Past Lives" / "Perfect Days", type: "movie"}` | ok, one exact match each | Kept their handles for every later call. |
 | q3 | `qloo_describe` `{entity: "Aftersun", type: "movie"}` | needs_input: several works share the title | Chose Charlotte Wells's film, the one the venue meant, and said so. |
 | q4 | `qloo_recommend` `{target_type: "movie", signals: [3 hits], limit: 20}` | ok, 20 films | The taste discovery list. |
-| q5, q6 | `qloo_rank` of the ten bookable films by name, on taste and in Madrid | needs_input: two titles each match several films | Picked the recent releases and asked again. |
-| q7 | `qloo_recommend` `{target_type: "place", filter_location: "Lavapiés, Madrid", include_tags: ["urn:tag:category:place:bar"], limit: 10}` | ok, 10 places | Kept two within walking distance, each with an offer tied to a dated event. |
+| q5, q6 | `qloo_rank` of the ten bookable films by name, on taste and in Lavapiés | needs_input: two titles each match several films | Picked the recent releases and asked again. |
+| q7 | `qloo_recommend` `{target_type: "place", filter_location: "Lavapiés, Madrid", include_tags: ["urn:tag:category:place:bar"], limit: 10}` | ok, 10 places | Kept three near the venue, each with an offer tied to a dated event. |
 | q8 | `qloo_recommend` `{target_type: "artist", signals: [3 hits], limit: 10}` | ok, 10 musicians | Five for the pre-show soundtrack. |
 | q9 | `qloo_rank` of the bookable films on taste, no location | ok, all ten | The shortlist's taste order. |
-| q10 | the same with `signal_location: "Madrid"`, no audience signal | ok, six of ten ranked | The shortlist's taste as it plays in Madrid; the four with no signal there were not held against them. |
-| q13 | the strongest discovery picks, same signals and city | ok, two ranked | Two off-list films joined the month, marked "check availability". |
-| q11, q12, q14–q18 | `qloo_audience_demographics` for seven picks, the push night's film included | four profiles | Pitched each profiled film to the age bands its profile supports; the push night's film has no profile, and the page says so. |
+| q10 | the same with `signal_location: "Lavapiés, Madrid"` | no results | The neighbourhood does not work as a ranking signal, so it used the city. |
+| q11 | the same with `signal_location: "Madrid"`, no audience signal | ok, six of ten ranked | The shortlist's taste as it plays in Madrid; the four with no signal there were not held against them. |
+| q12–q14 | `qloo_audience_demographics` for three picks, the push night's film included | two profiles | Placed and pitched each profiled film by the age bands its profile supports; the push night's film has no profile, and the page says so. |
 
-**Programme.** Eight dated events, all on a Friday, Saturday or Sunday and spread across the month's weekends: six from the venue's list and two off-list taste picks. The push night is the Saturday that opens Madrid's Almudena long weekend. The Spanish-language film is billed VO, the long film plays with its own intermission, and the wordless animation is the Sunday family matinee. Six bookable films are programmed and four held in reserve; under each verdict the page shows, from Qloo's results, where the title stands by taste and in Madrid, ties marked. Partners: two places near the venue. Soundtrack: five musicians.
+**Programme.** Eight dated events from the venue's list, seven of them on a Friday, Saturday or Sunday and spread across the month's weekends. The push night is the Saturday that opens Madrid's Almudena long weekend, with a film near the top of the regulars' taste. The Spanish-language film is billed VO, the wordless films need no subtitles, and the family matinee is dubbed, on a Sunday afternoon. Eight bookable films are programmed and two held in reserve, one of them for its length; under each verdict the page shows, from Qloo's results, where the title stands by taste and in Madrid, ties marked. Partners: three places near the venue. Soundtrack: five musicians.
 
-**Without Qloo.** The same model, with the same programme rules and no Qloo, planned the month twice. Both runs booked two films Marquee holds in reserve, neither chose Marquee's two off-list picks, and both pushed the same Saturday as Marquee, each with a different film.
+**Without Qloo.** The same model, with the same programme rules and no Qloo, planned the month twice. Both runs booked the long film Marquee holds back, and both pushed a different film from Marquee's, on two different nights.
 
-**Cost.** Eighteen Qloo calls, about 322,000 input tokens (at least 85% read from the prompt cache) and 31,000 output tokens, both control runs included: $0.48 of Claude usage. A run takes about two minutes; the three samples cost $0.38–0.48 each.
+**Cost.** Fourteen Qloo calls, about 244,000 input tokens (at least 78% read from the prompt cache) and 31,000 output tokens, both control runs included: $0.48 of Claude usage. A run takes about two minutes; the three samples cost $0.38–0.48 each.
 
 ## What we learned
 
