@@ -1,4 +1,4 @@
-export const VENUE_KINDS = ["cinema", "bookshop", "music_bar"] as const;
+export const VENUE_KINDS = ["cinema", "bookshop", "music_bar", "music_venue"] as const;
 export type VenueKind = (typeof VENUE_KINDS)[number];
 
 /** What a venue tells Marquee. Nothing here identifies a person: it describes a place and its programme. */

@@ -336,3 +336,26 @@ describe("push night taste", () => {
     expect(checkProgramme(p, { ...known, tasteScores, kind: "bookshop" }).join("\n")).not.toMatch(/bottom half/);
   });
 });
+
+describe("music venues", () => {
+  const venue = { ...known, shortlist: ["Paterson"], kind: "music_venue" };
+  const notes = [{ title: "Paterson", verdict: "programmed" as const, reason: "", evidence: [], same_act_as: [] }];
+  it("asks which acts share members, as at a music bar", () => {
+    const p = { ...programme([event({ source: "shortlist" }), event({ featured: ["Columbus"], date: "2026-11-07", when: "Week 1, Saturday evening" })]),
+      shortlist_notes: [{ title: "Paterson", verdict: "programmed" as const, reason: "", evidence: [] }] };
+    expect(checkProgramme(p, venue).join("\n")).toMatch(/"Paterson" has no same_act_as/);
+  });
+  it("rejects a support act more widely known than its headliner", () => {
+    const run = (head: number, sup: number) => checkProgramme({ ...programme([event({ featured: ["Paterson", "Old Joy"] }),
+      event({ featured: ["Columbus"], date: "2026-11-07", when: "Week 1, Saturday evening" })]), shortlist_notes: notes },
+    { ...venue, tasteScores: new Map([["Paterson", { score: 0.95, callId: "q1", popularity: head }], ["Old Joy", { score: 0.94, callId: "q1", popularity: sup }]]) }).join("\n");
+    expect(run(0.9, 0.97)).toMatch(/support "Old Joy" is more widely known than headliner "Paterson"/);
+    expect(run(0.95, 0.96)).not.toMatch(/more widely known/);
+  });
+  it("sizes a support act from discovery by the popularity any Qloo result gave it", () => {
+    const p = { ...programme([event({ featured: ["Paterson", "Old Joy"] }), event({ featured: ["Columbus"], date: "2026-11-07", when: "Week 1, Saturday evening" })]), shortlist_notes: notes };
+    const tasteScores = new Map([["Paterson", { score: 0.95, callId: "q1", popularity: 0.9 }]]);
+    const popularity = new Map([["Old Joy", { popularity: 0.99, callId: "q3" }]]);
+    expect(checkProgramme(p, { ...venue, tasteScores, popularity }).join("\n")).toMatch(/support "Old Joy" is more widely known than headliner "Paterson" in Qloo's data \(q3\)/);
+  });
+});

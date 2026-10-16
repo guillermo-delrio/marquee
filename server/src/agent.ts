@@ -4,7 +4,7 @@ import { runBaseline } from "./baseline.js";
 import { checkProgramme, namesIn } from "./check.js";
 import { forModel, resultsOf, summarise } from "./compact.js";
 import { createHandles } from "./handles.js";
-import { sharedRules, TARGET } from "./rules.js";
+import { LIVE_MUSIC, sharedRules, TARGET } from "./rules.js";
 import type { QlooClient } from "./qloo.js";
 import type { AgentEvent, Programme, QlooEnvelope, VenueInput } from "./types.js";
 
@@ -38,7 +38,7 @@ const PROGRAMME_SCHEMA = {
           runtime_minutes: { type: "integer", description: "From Qloo's data when it has a runtime; for a double bill, both plus the interval." },
           version: { type: "string", description: "Cinemas where films are usually dubbed: 'original version' or 'dubbed'." },
           format: { type: "string" },
-          featured: { type: "array", items: { type: "string" }, description: "Entities exactly as named in tool results." },
+          featured: { type: "array", items: { type: "string" }, description: "Entities exactly as named in tool results. At a music venue, the headliner first, then any support act." },
           why: { type: "string", description: "Plain-language rationale grounded in the cited results." },
           evidence: {
             type: "array",
@@ -98,7 +98,7 @@ const PROGRAMME_SCHEMA = {
           evidence: { type: "array", items: { type: "string" }, description: "Call ids." },
           same_act_as: {
             type: "array", items: { type: "string" },
-            description: "Required for music bars: other acts in the programme or on the list that share members with this one (a band and its leader's own project, a duo and its members), as named there. Empty if none.",
+            description: "Required for music bars and music venues: other acts in the programme or on the list that share members with this one (a band and its leader's own project, a duo and its members), as named there. Empty if none.",
           },
           held_for: {
             type: "string", enum: ["taste", "local", "audience", "size", "same_act", "format", "judgement", "rights", "slots"],
@@ -241,6 +241,7 @@ export async function runAgent(
   const localCalls = new Map<string, string>();
   const tasteScores = new Map<string, { score: number; callId: string; popularity?: number }>();
   const localScores = new Map<string, { score: number; callId: string }>();
+  const popularity = new Map<string, { popularity: number; callId: string }>();
   const callNames = new Map<string, Set<string>>();
   // Age skews per profiled title, and entity names by id so a profile (asked for by id) can be named.
   const ages = new Map<string, Record<string, number>>();
@@ -269,6 +270,11 @@ export async function runAgent(
       for (const r of resultsOf(envelope) as { entity_id?: string; query?: { age?: Record<string, number> } }[]) {
         const n = r.entity_id && idNames.get(r.entity_id);
         if (n && r.query?.age) ages.set(n, r.query.age);
+      }
+    }
+    if (envelope.status === "ok") {
+      for (const r of resultsOf(envelope) as { name?: unknown; popularity?: unknown }[]) {
+        if (typeof r.name === "string" && typeof r.popularity === "number" && !popularity.has(r.name)) popularity.set(r.name, { popularity: r.popularity, callId });
       }
     }
     // The shortlist's taste ranking (a rank with no location): each title's affinity, for the verdict checks.
@@ -344,7 +350,7 @@ export async function runAgent(
         const submitted = use.input as Programme;
         // Code cannot know who plays in which band, and the model rarely volunteers it mid-plan: ask it on its own.
         let sameActs: string[][] = [];
-        if (venue.kind === "music_bar") {
+        if (LIVE_MUSIC.has(venue.kind)) {
           const acts = [...new Set([...(venue.shortlist ?? []), ...submitted.events.flatMap((e) => e.featured)])];
           try {
             const asked = await sharedMembers(acts, anthropic, signal);
@@ -354,7 +360,7 @@ export async function runAgent(
             if (!signal?.aborted) console.error("Shared-members question failed:", (err as Error).message);
           }
         }
-        const problems = checkProgramme(submitted, { month: venue.month, slots: venue.slots, names, callIds, shortlist: venue.shortlist, checkedLocally, discovered, localCalls, tasteScores, localScores, callNames, ages, profiled, sameActs, audience: venue.audience, kind: venue.kind });
+        const problems = checkProgramme(submitted, { month: venue.month, slots: venue.slots, names, callIds, shortlist: venue.shortlist, checkedLocally, discovered, localCalls, tasteScores, popularity, localScores, callNames, ages, profiled, sameActs, audience: venue.audience, kind: venue.kind });
         // Up to two corrections; a third miss is published with its problems stated, rather than lost.
         if (problems.length && ++submissions < 3) {
           results.push({ type: "tool_result", tool_use_id: use.id, is_error: true,

@@ -6,7 +6,7 @@ import { Trail } from "./Trail";
 import type { AgentEvent, Programme, Sample, VenueInput } from "./types";
 import { VenueForm } from "./VenueForm";
 
-const KIND_LABEL = { cinema: "Cinema", bookshop: "Bookshop", music_bar: "Music bar" } as const;
+const KIND_LABEL = { music_venue: "Music venue", cinema: "Cinema", bookshop: "Bookshop", music_bar: "Music bar" } as const;
 
 export default function App() {
   const [events, setEvents] = useState<AgentEvent[]>([]);
@@ -128,8 +128,9 @@ export default function App() {
             </div>
           )}
           {error && <div className="panel error" role="alert">{error}</div>}
-          {programme && venue && <ProgrammeView programme={programme} venue={venue} events={events} />}
-          <Trail events={events} running={running} />
+          {/* Once there is a plan, the trail moves into its own tab; while the agent works it shows the research live. */}
+          {programme && venue ? <ProgrammeView programme={programme} venue={venue} events={events} trail={<Trail events={events} running={running} />} />
+            : <Trail events={events} running={running} />}
           {done && (
             <p className="footnote">
               {done.tool_calls} Qloo calls · {(done.input_tokens + done.output_tokens).toLocaleString()} model tokens

@@ -11,7 +11,7 @@ const args = process.argv.slice(2)
 const BASE = args.includes('--base') ? args[args.indexOf('--base') + 1] : 'http://localhost:8787'
 const OUT = new URL('../../out/', import.meta.url)
 const WIDTHS = [360, 390]
-const PAGES = ['/', '/?sample=0', '/?sample=1', '/?sample=2']
+const PAGES = ['/', '/?sample=0', '/?sample=1', '/?sample=2', '/?sample=3']
 
 const PROBE = `
   const de = document.documentElement, W = de.clientWidth, problems = []

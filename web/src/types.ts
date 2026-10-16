@@ -1,5 +1,5 @@
 // Mirrors server/src/types.ts (kept separate so the web build has no server imports).
-export type VenueKind = "cinema" | "bookshop" | "music_bar";
+export type VenueKind = "cinema" | "bookshop" | "music_bar" | "music_venue";
 
 export interface VenueInput {
   kind: VenueKind;

@@ -54,6 +54,8 @@ export function checkProgramme(
     localCalls?: Map<string, string>;
     /** For each title the taste ranking of the shortlist (no location) scored, its affinity and the call. */
     tasteScores?: Map<string, { score: number; callId: string; popularity?: number }>;
+    /** Qloo's popularity for every entity any call returned, and the first call that gave it (support-act sizing). */
+    popularity?: Map<string, { popularity: number; callId: string }>;
     /** For each title a city ranking scored, its affinity there and the call. */
     localScores?: Map<string, { score: number; callId: string }>;
     /** The names each call returned, so a citation can be checked against the call it names. */
@@ -70,6 +72,7 @@ export function checkProgramme(
   },
 ): string[] {
   const problems: string[] = [];
+  const liveMusic = known.kind === "music_bar" || known.kind === "music_venue";
   // Counts belong to the page, which computes them; the model's own counts drift from its plan.
   for (const [where, text] of [["headline", p.headline], ...(p.summary ?? []).map((s) => ["summary", s] as const)] as const) {
     if (COUNT.test(text ?? "")) problems.push(`The ${where} states a count ("${(text ?? "").match(COUNT)![0]}"); leave counts to the page.`);
@@ -139,7 +142,7 @@ export function checkProgramme(
     if (h === "same_act" && !(note.same_act_as ?? []).some((o) => featured.has(normalName(o)))) {
       return `"${title}" is held as the same act as another, but same_act_as names no act in the programme.`;
     }
-    if (h === "format" && known.kind === "music_bar") return `"${title}": format is not a reason at a music bar; give the held_for that is true.`;
+    if (h === "format" && liveMusic) return `"${title}": format is not a reason at a ${known.kind!.replace("_", " ")}; give the held_for that is true.`;
     return null;
   };
   if (shortlist.size) {
@@ -162,10 +165,10 @@ export function checkProgramme(
         if (note.verdict === "skip" && localCall && !note.evidence.includes(localCall)) {
           problems.push(`"${title}" is skipped without citing ${localCall}, the city ranking that scored it; weigh both rankings.`);
         }
-        if (known.kind === "music_bar" && !Array.isArray(note.same_act_as)) {
+        if (liveMusic && !Array.isArray(note.same_act_as)) {
           problems.push(`"${title}" has no same_act_as: list the listed or programmed acts that share members with it, or give an empty list.`);
         }
-        if (note.verdict === "programmed" && known.kind === "music_bar") {
+        if (note.verdict === "programmed" && liveMusic) {
           const nights = p.events.filter((e) => e.featured.some((f) => normalName(f) === normalName(title)));
           // A night is on record when the agent says so; an act booked in person to DJ is booked, whatever the format says.
           const onRecord = (e: (typeof nights)[number]) => e.on_record ?? RECORDS.test(e.format);
@@ -290,5 +293,22 @@ export function checkProgramme(
       problems.push(`${at}: ${e.date} is a ${day[0].toUpperCase()}${day.slice(1)}, but \`when\` says ${named[0].toUpperCase()}${named.slice(1)}.`);
     }
   });
+  // At a music venue the headliner comes first in featured; a support act listed after it must not be more widely known.
+  if (known.kind === "music_venue") {
+    p.events.forEach((e, i) => {
+      // The shortlist ranking first, then any result that carried a popularity (a support act from discovery).
+      const pop = (t: string) => {
+        const r = lookup(known.tasteScores, t);
+        return r?.popularity !== undefined ? { popularity: r.popularity, callId: r.callId } : lookup(known.popularity, t);
+      };
+      const head = pop(e.featured[0] ?? "");
+      for (const f of e.featured.slice(1)) {
+        const sup = pop(f);
+        if (head?.popularity !== undefined && sup?.popularity !== undefined && sup.popularity - head.popularity > 0.02) {
+          problems.push(`Event ${i + 1} ("${e.title}"): support "${f}" is more widely known than headliner "${e.featured[0]}" in Qloo's data (${sup.callId}); list the headliner first, or swap them.`);
+        }
+      }
+    });
+  }
   return problems;
 }

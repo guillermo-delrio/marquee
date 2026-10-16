@@ -6,6 +6,7 @@ const KINDS: { kind: VenueKind; label: string; hits: string; bookable: string }[
   { kind: "cinema", label: "Cinema", hits: "e.g. Past Lives", bookable: "e.g. films your distributor offers" },
   { kind: "bookshop", label: "Bookshop", hits: "e.g. Piranesi", bookable: "e.g. titles with authors on tour" },
   { kind: "music_bar", label: "Music bar", hits: "e.g. Khruangbin", bookable: "e.g. acts your agent can offer" },
+  { kind: "music_venue", label: "Music venue", hits: "e.g. Wednesday", bookable: "e.g. acts touring this month" },
 ];
 
 const nextMonth = () => {

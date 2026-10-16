@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 
 import { dateFor, toIcs, toMarkdown } from "./calendar";
 import { Cite } from "./Cite";
@@ -6,7 +7,9 @@ import { comparisons, profiles as ageProfiles, scoreRows, standings } from "./ev
 import { entityNames } from "./trailLabels";
 import { TasteVsPlace } from "./TasteVsPlace";
 import { featuredVerb, heldLabel, soundtrackTitle, verdictLabels } from "./labels";
-import { WithoutQloo } from "./WithoutQloo";
+import { imageFor, imageIndex, nameIndex } from "./images";
+import { MonthStrip, QlooChanged } from "./Summary";
+import { diffPlans, WithoutQloo } from "./WithoutQloo";
 import type { Profile, Standing } from "./evidence";
 import type { AgentEvent, Programme, ProgrammeEvent, ShortlistNote, VenueInput } from "./types";
 
@@ -70,21 +73,61 @@ function AgeTable({ rows, venueAudience }: { rows: Profile[]; venueAudience?: st
   );
 }
 
-export function ProgrammeView({ programme, venue, events }: { programme: Programme; venue: VenueInput; events: AgentEvent[] }) {
+const TABS = [["month", "The month"], ["shortlist", "Your shortlist"], ["compare", "With and without Qloo"], ["audience", "Audience and city"],
+  ["limits", "Limits and checks"], ["trail", "Research trail"]] as const;
+type Tab = (typeof TABS)[number][0];
+
+export function ProgrammeView({ programme, venue, events, trail }: { programme: Programme; venue: VenueInput; events: AgentEvent[]; trail: ReactNode }) {
+  const [tab, setTab] = useState<Tab>("month");
+  const tabsRef = useRef<HTMLDivElement | null>(null);
+  // A citation anywhere on the page opens the research trail at that call.
+  useEffect(() => {
+    const show = (ev: Event) => {
+      const id = (ev as CustomEvent<string>).detail;
+      setTab("trail");
+      requestAnimationFrame(() => {
+        const el = document.getElementById(`step-${id}`);
+        el?.querySelector("details")?.setAttribute("open", "");
+        el?.scrollIntoView({ block: "center" });
+      });
+    };
+    window.addEventListener("marquee:cite", show);
+    return () => window.removeEventListener("marquee:cite", show);
+  }, []);
+  const open = (t: Tab, target?: string) => {
+    setTab(t);
+    requestAnimationFrame(() => (target ? document.getElementById(target) : tabsRef.current)?.scrollIntoView({ block: "start", behavior: "smooth" }));
+  };
+  const images = imageIndex(events);
+  const names = nameIndex(events);
+  const shown = (f: string) => (f === f.toLowerCase() ? names.get(f.normalize("NFKC").replace(/[^\p{L}\p{N}]+/gu, " ").trim()) ?? f : f);
+  // An event title that repeats a pick in lower case ("Dehd with good looks") gets the pick in Qloo's spelling.
+  const canonical = (f: string) => names.get(f.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim()) ?? f;
+  const titleOf = (e: ProgrammeEvent) => e.featured.reduce((t, f) => {
+    const lower = f.toLowerCase();
+    return t.includes(lower) && !t.includes(canonical(f)) ? t.split(lower).join(canonical(f)) : t;
+  }, e.title);
+  const dated = programme.events
+    .map((e, i) => ({ e: { ...e, title: titleOf(e) }, date: dateFor(e.when, venue.month, i, programme.events.length, e.date, e.start_time) }))
+    .sort((a, b) => a.date.getTime() - b.date.getTime());
   const evidence = comparisons(events, { featured: programme.events.flatMap((e) => e.featured) });
   const baselineEvent = events.find((e): e is Extract<AgentEvent, { type: "baseline" }> => e.type === "baseline");
   const baseline = baselineEvent?.programme;
+  const scored = events.flatMap((x) => (x.type === "tool_result" && x.name === "qloo_rank" ? scoreRows(x.raw).map((r) => r.name) : []));
+  const diff = baseline ? diffPlans(programme, baseline, baselineEvent?.second, scored) : null;
   // What Qloo told Marquee that a plan without it could not know, counted from the run itself.
   const shortlistLocal = evidence.find((c) => c.kind === "shortlist");
   // With no city ranking that scored any bookable title, the place Qloo was asked about, so the page can say "none".
   const noLocal = venue.shortlist?.map((t) => standings(events, t)).find((x) => x.localTried && !x.local)?.localTried ?? null;
   const profiles = events.filter((e) => e.type === "tool_result" && e.name === "qloo_audience_demographics" && (e.result_count ?? 0) > 0).length;
+  // Only cinemas and bookshops get a soundtrack; a music venue's or bar's programme is already artists.
+  const soundtrack = venue.kind === "cinema" || venue.kind === "bookshop" ? programme.soundtrack : undefined;
   const informed = [
     ...(shortlistLocal ? [`Qloo ranked ${shortlistLocal.rows.filter((r) => r.local !== null).length} of your ${venue.shortlist?.length ?? shortlistLocal.rows.length} bookable titles in ${shortlistLocal.location}${(venue.shortlist?.length ?? 0) > shortlistLocal.rows.length ? ` (${(venue.shortlist?.length ?? 0) - shortlistLocal.rows.length} it could not match or score at all)` : ""}.`]
       : venue.shortlist?.length && noLocal ? [`Qloo ranked none of your ${venue.shortlist.length} bookable titles in ${noLocal}: its local data does not cover them.`] : []),
     ...(profiles ? [`It profiled the audiences of ${profiles} lead pick${profiles === 1 ? "" : "s"}.`] : []),
     ...(programme.partners?.length ? [`It found ${programme.partners.length} nearby places whose audiences share the taste.`] : []),
-    ...(programme.soundtrack?.length ? [`It found ${programme.soundtrack.length} musicians with high affinity for this taste.`] : []),
+    ...(soundtrack?.length ? [`It found ${soundtrack.length} musicians with high affinity for this taste.`] : []),
   ];
   const [copied, setCopied] = useState(false);
   const VERDICT = verdictLabels(venue.kind);
@@ -99,12 +142,10 @@ export function ProgrammeView({ programme, venue, events }: { programme: Program
   ].filter(Boolean).join(" ") : "";
   const md = () => toMarkdown(programme, venue.month, venue.location);
   // Cards in calendar order, whatever order the agent wrote them in.
-  const dated = programme.events
-    .map((e, i) => ({ e, date: dateFor(e.when, venue.month, i, programme.events.length, e.date, e.start_time) }))
-    .sort((a, b) => a.date.getTime() - b.date.getTime());
+
   return (
     <section className="programme">
-      <header className="panel">
+      <header className="panel hero">
         <p className="eyebrow">{venue.location} · {venue.month}</p>
         <h2>{programme.headline}</h2>
         {programme.summary?.length ? (
@@ -112,10 +153,9 @@ export function ProgrammeView({ programme, venue, events }: { programme: Program
             {programme.summary.map((s, i) => <li key={i}>{s}</li>)}
             {verdictLine && <li>{verdictLine}</li>}
           </ul>
-        ) : null}
-        {programme.summary?.length ? (
-          <details className="why"><summary>Why these picks</summary><p className="read"><Cite text={programme.audience_read} /></p></details>
         ) : <p className="read"><Cite text={programme.audience_read} /></p>}
+        <MonthStrip dated={dated} push={programme.push} images={images} onOpen={(i) => open("month", `event-${i}`)} />
+        {diff && <QlooChanged diff={diff} labels={VERDICT} informed={informed} onMore={() => open("compare")} />}
         <div className="actions">
           <button onClick={() => download(`marquee-${venue.month}.ics`, "text/calendar", toIcs(programme, venue.month, venue.location))}>
             Add to calendar (.ics)
@@ -125,7 +165,47 @@ export function ProgrammeView({ programme, venue, events }: { programme: Program
           </button>
         </div>
       </header>
-      {programme.shortlist_notes?.length ? (
+      <div className="tabs" role="tablist" aria-label="Plan details" ref={tabsRef}>
+        {TABS.filter(([t]) => (t !== "shortlist" || programme.shortlist_notes?.length) && (t !== "compare" || baseline)).map(([t, label]) => (
+          <button key={t} role="tab" id={`tab-${t}`} aria-selected={tab === t} aria-controls={`panel-${t}`} className={tab === t ? "tab on" : "tab"} onClick={() => setTab(t)}>{label}</button>
+        ))}
+      </div>
+      <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="tabpanel">
+      {tab === "month" && <>
+      {programme.summary?.length ? <details className="why panel"><summary>Why these picks</summary><p className="read"><Cite text={programme.audience_read} /></p></details> : null}
+      <ol className="events">
+        {dated.map(({ e, date }, i) => {
+          const img = e.featured.map((f) => imageFor(images, f)).find(Boolean);
+          return (
+          <li key={i} id={`event-${i}`} className="panel event">
+            {img && <img className="event-img" src={img} alt="" loading="lazy" referrerPolicy="no-referrer" />}
+            <div className="event-head">
+              <span className="when">{e.when.replace(/^week\s*\d+\s*[,:–-]?\s*/i, "")}</span>
+              <span className={`confidence ${e.confidence}`}>{CONFIDENCE[e.confidence]}</span>
+            </div>
+            <p className="date">
+              {fmt.format(date)}, {hhmm(date)}{e.runtime_minutes ? `–${hhmm(new Date(date.getTime() + e.runtime_minutes * 60000))}` : ""}
+              {e.version && <span className="source"> · {e.version}</span>}
+              {e.source && <span className="source"> · {e.on_record && e.source === "taste" ? "Taste pick · played on record" : SOURCE[e.source]}</span>}
+            </p>
+            <h3>{e.title}</h3>
+            <p className="format">{e.format}</p>
+            <ul className="featured">{e.featured.map((f) => <li key={f}>{shown(f)}</li>)}</ul>
+            <p><Cite text={e.why} /></p>
+            <details>
+              <summary>Evidence ({e.evidence.length})</summary>
+              <ul className="evidence">
+                {e.evidence.map((ev, j) => (
+                  <li key={j}><Cite text={ev.call_id} />: {ev.claim}</li>
+                ))}
+              </ul>
+            </details>
+          </li>
+          );
+        })}
+      </ol>
+      </>}
+      {tab === "shortlist" && programme.shortlist_notes?.length ? (
         <section className="panel verdicts">
           <h3>Your shortlist</h3>
           <p className="viz-sub">Under each verdict, where the title stands in Qloo's rankings; ≈ marks a score within 0.01 of a neighbour, a tie.</p>
@@ -140,37 +220,11 @@ export function ProgrammeView({ programme, venue, events }: { programme: Program
           </ul>
         </section>
       ) : null}
-      <ol className="events">
-        {dated.map(({ e, date }, i) => (
-          <li key={i} className="panel event">
-            <div className="event-head">
-              <span className="when">{e.when.replace(/^week\s*\d+\s*[,:–-]?\s*/i, "")}</span>
-              <span className={`confidence ${e.confidence}`}>{CONFIDENCE[e.confidence]}</span>
-            </div>
-            <p className="date">
-              {fmt.format(date)}, {hhmm(date)}{e.runtime_minutes ? `–${hhmm(new Date(date.getTime() + e.runtime_minutes * 60000))}` : ""}
-              {e.version && <span className="source"> · {e.version}</span>}
-              {e.source && <span className="source"> · {e.on_record && e.source === "taste" ? "Taste pick · played on record" : SOURCE[e.source]}</span>}
-            </p>
-            <h3>{e.title}</h3>
-            <p className="format">{e.format}</p>
-            <ul className="featured">{e.featured.map((f) => <li key={f}>{f}</li>)}</ul>
-            <p><Cite text={e.why} /></p>
-            <details>
-              <summary>Evidence ({e.evidence.length})</summary>
-              <ul className="evidence">
-                {e.evidence.map((ev, j) => (
-                  <li key={j}><Cite text={ev.call_id} />: {ev.claim}</li>
-                ))}
-              </ul>
-            </details>
-          </li>
-        ))}
-      </ol>
-      {baseline && <WithoutQloo labels={VERDICT} ours={programme} theirs={baseline} second={baselineEvent?.second} city={evidence[0]?.location ?? venue.location}
-        informed={informed} localSeen={evidence.some((c) => c.rows.some((r) => r.local !== null))} profilesSeen={profiles > 0}
-        scored={events.flatMap((x) => (x.type === "tool_result" && x.name === "qloo_rank" ? scoreRows(x.raw).map((r) => r.name) : []))} />}
-      {(programme.partners?.length || programme.audience_check) ? (
+      {tab === "compare" && baseline && <WithoutQloo labels={VERDICT} ours={programme} theirs={baseline} second={baselineEvent?.second} city={evidence[0]?.location ?? venue.location}
+        informed={informed} localSeen={evidence.some((c) => c.rows.some((r) => r.local !== null))} profilesSeen={profiles > 0} scored={scored} />}
+      {tab === "audience" && <>
+      {evidence.map((c) => <TasteVsPlace key={c.localCall} c={c} />)}
+      {(programme.partners?.length || programme.audience_check || soundtrack?.length) ? (
         <div className="two">
           {programme.partners?.length ? (
             <section className="panel">
@@ -183,11 +237,11 @@ export function ProgrammeView({ programme, venue, events }: { programme: Program
               </ul>
             </section>
           ) : null}
-          {programme.soundtrack?.length ? (
+          {soundtrack?.length ? (
             <section className="panel">
               <h3>{soundtrackTitle(venue.kind)}</h3>
               <p className="viz-sub">Musicians with high affinity for this taste, from Qloo: a playlist for the lobby, or a themed night.</p>
-              <p>{programme.soundtrack.map((a) => a.name).join(" · ")} {programme.soundtrack[0]?.evidence.length ? <><Cite text={programme.soundtrack[0].evidence.join(", ")} /></> : null}</p>
+              <p>{soundtrack.map((a) => a.name).join(" · ")} {soundtrack[0]?.evidence.length ? <><Cite text={soundtrack[0].evidence.join(", ")} /></> : null}</p>
             </section>
           ) : null}
           {programme.audience_check ? (
@@ -200,7 +254,8 @@ export function ProgrammeView({ programme, venue, events }: { programme: Program
           ) : null}
         </div>
       ) : null}
-      {evidence.map((c) => <TasteVsPlace key={c.localCall} c={c} />)}
+      </>}
+      {tab === "limits" && (
       <div className="two">
         <section className="panel">
           <h3>What this does not establish</h3>
@@ -210,6 +265,9 @@ export function ProgrammeView({ programme, venue, events }: { programme: Program
           <h3>Before you commit</h3>
           <ul>{programme.next_checks.map((n, i) => <li key={i}><Cite text={n} /></li>)}</ul>
         </section>
+      </div>
+      )}
+      {tab === "trail" && trail}
       </div>
     </section>
   );

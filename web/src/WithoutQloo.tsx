@@ -12,17 +12,13 @@ const titles = (p: Programme) => {
   return out;
 };
 
+export type PlanDiff = ReturnType<typeof diffPlans>;
+
 /**
- * The brief's test, "would this work the same without Qloo?", shown as facts rather than a score. The same model,
- * with the same programme rules and no Qloo, planned the month twice: the two runs show how much plans differ by
- * chance, and a difference only counts when both runs without Qloo agree on it.
+ * What Qloo changed, as facts: titles only one side planned, verdicts both control runs agree on and Marquee does not,
+ * and each side's push night. Shared by the summary card and the full comparison.
  */
-export function WithoutQloo({ labels: VERDICT, ours, theirs, second, city, informed, localSeen, profilesSeen, scored }: {
-  labels: Record<ShortlistNote["verdict"], string>;
-  ours: Programme; theirs: Programme; second?: Programme; city: string; informed: string[]; localSeen: boolean; profilesSeen: boolean;
-  /** Titles a Qloo ranking scored: a verdict on any other title cannot rest on Qloo's data. */
-  scored: string[];
-}) {
+export function diffPlans(ours: Programme, theirs: Programme, second: Programme | undefined, scored: string[]) {
   const a = titles(ours);
   const b = titles(theirs);
   const c = second ? titles(second) : b;
@@ -63,6 +59,21 @@ export function WithoutQloo({ labels: VERDICT, ours, theirs, second, city, infor
   }
   const pushes = [ourPush ? `${ourPush.when}, ${ourPush.what}` : null,
     [...theirPush.values()].map((x) => `${x.label}${second ? (x.runs === 2 ? " (both runs)" : " (one run)") : ""}`).join("; ") || null];
+  return { onlyOurs, onlyTheirs, shared, runOverlap, runUnion, differ, restsOn, fromQloo, unstable, ourPush, pushes };
+}
+
+/**
+ * The brief's test, "would this work the same without Qloo?", shown as facts rather than a score. The same model,
+ * with the same programme rules and no Qloo, planned the month twice: the two runs show how much plans differ by
+ * chance, and a difference only counts when both runs without Qloo agree on it.
+ */
+export function WithoutQloo({ labels: VERDICT, ours, theirs, second, city, informed, localSeen, profilesSeen, scored }: {
+  labels: Record<ShortlistNote["verdict"], string>;
+  ours: Programme; theirs: Programme; second?: Programme; city: string; informed: string[]; localSeen: boolean; profilesSeen: boolean;
+  /** Titles a Qloo ranking scored: a verdict on any other title cannot rest on Qloo's data. */
+  scored: string[];
+}) {
+  const { onlyOurs, onlyTheirs, shared, runOverlap, runUnion, differ, restsOn, fromQloo, unstable, pushes } = diffPlans(ours, theirs, second, scored);
   return (
     <section className="panel without">
       <h3>With and without Qloo</h3>
