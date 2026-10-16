@@ -24,7 +24,7 @@ export function namesIn(value: unknown, into = new Set<string>()): Set<string> {
 /** A reason that treats a title's absence from a ranking as evidence against it. */
 const COUNT = /\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\d+)\s+(?:[a-z-]+\s+){0,3}(picks?|events?|nights?|evenings?|titles?|films?|books?|acts?|shows?|screenings?|sets?|swaps?|readings?|clubs?|sessions?|tables?|matinees?|dates?|weekends?|fridays?|saturdays?)\b/i;
 /** Rank and comparison words: the page writes each title's standing from the data, so a verdict reason leaves them out. */
-const RANK_TALK = /\b(top|first|second|third|fourth|fifth|last|lowest|highest|best|strongest|weakest|above|below|ahead|behind|ties?|tied|near-tie|weaker|stronger|higher|lower|mid-table|middle|leads?|#\d+)\b/i;
+const RANK_TALK = /\b(?:(?:top|first|second|third|fourth|fifth|last|highest|lowest|strongest|weakest|best|near[- ]top|joint[- ]top)\b[^.;]{0,30}\b(?:taste|rankings?|shortlist|list|scores?|affinity)\b|weaker|stronger|higher|lower|closer|closest|less close|further|furthest|ahead|behind|ties?|tied|near[- ]tie|mid-table|#\d+)\b/i;
 const RECORDS = /\b(listening|records?|vinyl|dj)\b/i;
 
 /** Qloo's age bands that overlap the ages in a venue's audience ("people 25-34" gives 25_to_29 and 30_to_34). */
@@ -60,6 +60,10 @@ export function checkProgramme(
     callNames?: Map<string, Set<string>>;
     /** Each profiled title's age skews (Qloo's keys, such as "25_to_29"), from qloo_audience_demographics. */
     ages?: Map<string, Record<string, number>>;
+    /** Titles an audience profile was requested for, whether or not Qloo returned one. */
+    profiled?: Set<string>;
+    /** Groups of acts that share members, from a separate question to the model (music bars). */
+    sameActs?: string[][];
     /** The venue's stated audience, such as "people 25-34". */
     audience?: string;
     kind?: string;
@@ -175,10 +179,16 @@ export function checkProgramme(
           const problem = holdProblem(note, title);
           if (problem) problems.push(problem);
           // The page already shows which titles have no local data; in a held title's reason it reads as a mark against it.
-          if (MISSING.test(note.reason)) problems.push(`"${title}": leave the missing data ("${note.reason.match(MISSING)![0]}") out of a held title's reason; the page shows it.`);
+          // A judgement hold of a title Qloo never scored may say plainly that the booked titles had data: that is the
+          // honest reason, and hiding it only moves it out of sight.
+          if (note.held_for !== "judgement" && MISSING.test(note.reason)) problems.push(`"${title}": leave the missing data ("${note.reason.match(MISSING)![0]}") out of a held title's reason; the page shows it.`);
         }
       }
     }
+  }
+  for (const group of known.sameActs ?? []) {
+    const nights = new Set(p.events.filter((e) => e.featured.some((f) => group.some((g) => normalName(g) === normalName(f)))).map((e) => e.date));
+    if (nights.size > 1) problems.push(`${group.map((g) => `"${g}"`).join(" and ")} share members, so they are one act; give them one night between them.`);
   }
   // Acts that share members are one act: one night between them, records nights included.
   for (const n of p.shortlist_notes ?? []) for (const other of n.same_act_as ?? []) {
@@ -192,11 +202,18 @@ export function checkProgramme(
   }
   // The night to push hardest goes on a Friday or Saturday when the plan has any.
   const weekday = (d?: string) => (d ? new Date(`${d}T12:00:00Z`).getUTCDay() : -1);
-  if (p.push && p.events.some((e) => [5, 6].includes(weekday(e.date))) && ![5, 6].includes(weekday(p.push))) {
+  // Bookshops are different: their events run on weeknights and their big day is a retail Saturday.
+  const nightlife = known.kind !== "bookshop";
+  if (nightlife && p.push && p.events.some((e) => [5, 6].includes(weekday(e.date))) && ![5, 6].includes(weekday(p.push))) {
     problems.push(`The push night ${p.push} is not a Friday or Saturday; push a weekend night.`);
   }
   // The push night's lead pick must not be one whose profile leans away from the venue's own ages overall.
   const pushEvent = p.push ? p.events.find((e) => e.date === p.push) : undefined;
+  const profiled = known.profiled;
+  if (pushEvent && profiled && known.kind !== "bookshop") {
+    const unprofiled = pushEvent.featured.filter((f) => ![...profiled].some((n) => normalName(n) === normalName(f)));
+    if (unprofiled.length) problems.push(`The push night features ${unprofiled.map((f) => `"${f}"`).join(", ")} with no audience profile requested; profile the push night's pick (qloo_audience_demographics) before pushing it.`);
+  }
   if (pushEvent && known.ages && venueBands(known.audience).length) {
     for (const f of pushEvent.featured) {
       const a = lookup(known.ages, f);
@@ -214,14 +231,14 @@ export function checkProgramme(
   for (const e of p.events) if (e.date && [5, 6, 0].includes(weekday(e.date)) && perWeekend.has(weekendOf(e.date))) perWeekend.set(weekendOf(e.date), perWeekend.get(weekendOf(e.date))! + 1);
   const empty = [...perWeekend].filter(([, n]) => n === 0).map(([k]) => k);
   const crowded = [...perWeekend].filter(([, n]) => n >= 3).map(([k]) => k);
-  if (empty.length && crowded.length) problems.push(`The weekend of ${crowded[0]} has ${perWeekend.get(crowded[0])} events while the weekend of ${empty[0]} has none; spread them.`);
+  if (nightlife && empty.length && crowded.length) problems.push(`The weekend of ${crowded[0]} has ${perWeekend.get(crowded[0])} events while the weekend of ${empty[0]} has none; spread them.`);
   // Weekends first: a second weeknight event while a Friday or Saturday of the month is still free.
   const used = new Set(p.events.map((e) => e.date));
   const [y, m] = known.month.split("-").map(Number);
   const freeWeekend = Array.from({ length: new Date(Date.UTC(y, m, 0)).getUTCDate() }, (_, i) => `${known.month}-${String(i + 1).padStart(2, "0")}`)
     .filter((d) => [5, 6].includes(weekday(d)) && !used.has(d));
   const weeknights = p.events.filter((e) => [1, 2, 3, 4].includes(weekday(e.date)));
-  if (weeknights.length > 1 && freeWeekend.length) {
+  if (nightlife && weeknights.length > 1 && freeWeekend.length) {
     problems.push(`${weeknights.length} events are on weeknights (${weeknights.map((e) => e.date).join(", ")}) while ${freeWeekend.join(", ")} ${freeWeekend.length === 1 ? "is" : "are"} free; move all but one to a free Friday or Saturday, within the venue's stated days.`);
   }
   if (p.events.length !== known.slots) problems.push(`The programme must have exactly ${known.slots} events, not ${p.events.length}.`);
@@ -240,6 +257,7 @@ export function checkProgramme(
   }));
   p.events.forEach((e, i) => {
     const at = `Event ${i + 1} ("${e.title}")`;
+    if (RANK_TALK.test(e.why)) problems.push(`${at}: the why says "${e.why.match(RANK_TALK)![0]}"; the page shows each title's standing from the data, so say why this night works without ranks or comparisons.`);
     for (const f of e.featured) if (!names.has(normalName(f))) problems.push(`${at}: "${f}" does not appear in any Qloo result; feature only returned titles, named as returned.`);
     for (const c of e.evidence) if (!known.callIds.has(c.call_id)) problems.push(`${at}: ${c.call_id} is not a call in this run.`);
     if (e.source === "taste" && known.checkedLocally) {

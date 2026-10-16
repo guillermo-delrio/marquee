@@ -76,9 +76,12 @@ export function ProgrammeView({ programme, venue, events }: { programme: Program
   const baseline = baselineEvent?.programme;
   // What Qloo told Marquee that a plan without it could not know, counted from the run itself.
   const shortlistLocal = evidence.find((c) => c.kind === "shortlist");
+  // With no city ranking that scored any bookable title, the place Qloo was asked about, so the page can say "none".
+  const noLocal = venue.shortlist?.map((t) => standings(events, t)).find((x) => x.localTried && !x.local)?.localTried ?? null;
   const profiles = events.filter((e) => e.type === "tool_result" && e.name === "qloo_audience_demographics" && (e.result_count ?? 0) > 0).length;
   const informed = [
-    ...(shortlistLocal ? [`Qloo ranked ${shortlistLocal.rows.filter((r) => r.local !== null).length} of your ${venue.shortlist?.length ?? shortlistLocal.rows.length} bookable titles in ${shortlistLocal.location}${(venue.shortlist?.length ?? 0) > shortlistLocal.rows.length ? ` (${(venue.shortlist?.length ?? 0) - shortlistLocal.rows.length} it could not match or score at all)` : ""}.`] : []),
+    ...(shortlistLocal ? [`Qloo ranked ${shortlistLocal.rows.filter((r) => r.local !== null).length} of your ${venue.shortlist?.length ?? shortlistLocal.rows.length} bookable titles in ${shortlistLocal.location}${(venue.shortlist?.length ?? 0) > shortlistLocal.rows.length ? ` (${(venue.shortlist?.length ?? 0) - shortlistLocal.rows.length} it could not match or score at all)` : ""}.`]
+      : venue.shortlist?.length && noLocal ? [`Qloo ranked none of your ${venue.shortlist.length} bookable titles in ${noLocal}: its local data does not cover them.`] : []),
     ...(profiles ? [`It profiled the audiences of ${profiles} lead pick${profiles === 1 ? "" : "s"}.`] : []),
     ...(programme.partners?.length ? [`It found ${programme.partners.length} nearby places whose audiences share the taste.`] : []),
     ...(programme.soundtrack?.length ? [`It found ${programme.soundtrack.length} musicians with high affinity for this taste.`] : []),

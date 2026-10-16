@@ -78,6 +78,8 @@ export default function App() {
         const asked = new URLSearchParams(window.location.search).has("sample");
         const first = asked ? list[n] : list[0];
         if (first?.events) replay(first);
+        // A shared sample link on a phone opens on the plan, not the form above it; the bare landing page keeps the form first.
+        if (asked && first?.events) setTimeout(showResults, 300);
       })
       .catch(() => setSamples([]));
     fetchHealth().then((h) => setLive(h.live)).catch(() => setLive(null));

@@ -123,7 +123,7 @@ export function standings(events: AgentEvent[], title: string): { taste: Standin
     const asked = optionsOf(r.raw).some((o) => norm(o.name) === norm(title));
     const i = rows.findIndex((x) => norm(x.name) === norm(title));
     const place = c.args.signal_location ? String(c.args.signal_location) : null;
-    if (place && asked && rows.length) out.localTried = place;
+    if (place && asked) out.localTried = place;
     if (i < 0) continue;
     const tie = (i > 0 && rows[i].tied) || (i + 1 < rows.length && rows[i + 1].tied);
     const s = { call: c.call_id, pos: i + 1, of: rows.length, tie };

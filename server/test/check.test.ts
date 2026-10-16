@@ -277,7 +277,7 @@ describe("round 8 checks", () => {
   it("keeps ranks and comparisons out of verdict reasons", () => {
     const p = { ...programme([event({ source: "shortlist" }), event({ featured: ["Columbus"], date: "2026-11-07", when: "Week 1, Saturday evening" })]),
       shortlist_notes: [{ title: "Paterson", verdict: "programmed" as const, reason: "Top of the Madrid ranking.", evidence: [] }] };
-    expect(checkProgramme(p, { ...known, shortlist: ["Paterson"] }).join("\n")).toMatch(/the reason says "Top"/);
+    expect(checkProgramme(p, { ...known, shortlist: ["Paterson"] }).join("\n")).toMatch(/the reason says "Top of the Madrid ranking"/);
   });
   it("does not push a night whose audience leans away from the venue's ages", () => {
     const p = { ...programme([event({ date: "2026-11-06" }), event({ featured: ["Columbus"], date: "2026-11-07", when: "Week 1, Saturday evening" })]), push: "2026-11-06" };
@@ -294,5 +294,35 @@ describe("round 8 checks", () => {
   it("finds counts with several words between number and noun", () => {
     expect(checkProgramme({ ...programme([event(), event({ featured: ["Columbus"], date: "2026-11-07" })]), headline: "Four Friday live sets and one swap" }, known).join("\n"))
       .toMatch(/headline states a count/);
+  });
+});
+
+describe("round 9 checks", () => {
+  it("gives acts that share members one night, from the separate question", () => {
+    const p = programme([event({ featured: ["Paterson"] }), event({ featured: ["Columbus"], date: "2026-11-07", when: "Week 1, Saturday evening" })]);
+    expect(checkProgramme(p, { ...known, sameActs: [["Paterson", "Columbus"]] }).join("\n")).toMatch(/"Paterson" and "Columbus" share members/);
+  });
+  it("leaves a bookshop's weeknight events and push day alone", () => {
+    const p = { ...programme([event({ date: "2026-11-04", when: "Wednesday evening" }), event({ featured: ["Columbus"], date: "2026-11-12" })]), push: "2026-11-12" };
+    expect(checkProgramme(p, { ...known, kind: "bookshop" })).toEqual([]);
+    expect(checkProgramme(p, { ...known, kind: "cinema" }).join("\n")).toMatch(/2 events are on weeknights/);
+  });
+  it("asks for an audience profile of the push night's pick", () => {
+    const p = { ...programme([event({ date: "2026-11-06", when: "Friday evening" }), event({ featured: ["Columbus"], date: "2026-11-07", when: "Saturday evening" })]), push: "2026-11-07" };
+    expect(checkProgramme(p, { ...known, kind: "cinema", profiled: new Set(["Paterson"]) }).join("\n")).toMatch(/"Columbus" with no audience profile requested/);
+    expect(checkProgramme(p, { ...known, kind: "cinema", profiled: new Set(["Columbus"]) })).toEqual([]);
+  });
+  it("keeps ranks out of an event's why", () => {
+    expect(checkProgramme(programme([event({ why: "Top of the London ranking." }), event({ featured: ["Columbus"], date: "2026-11-07" })]), known).join("\n"))
+      .toMatch(/the why says "Top of the London ranking"/);
+  });
+});
+
+describe("rank talk, not dates", () => {
+  it("allows ordinal dates and 'lead' but not ranking claims", () => {
+    const run = (why: string) => checkProgramme(programme([event({ why }), event({ featured: ["Columbus"], date: "2026-11-07" })]), known).join("\n");
+    expect(run("The first Friday of the month, leading into the long weekend.")).not.toMatch(/the why says/);
+    expect(run("Second on taste and a near tie in Madrid.")).toMatch(/the why says/);
+    expect(run("Top of the London ranking.")).toMatch(/the why says "Top of the London ranking"/);
   });
 });

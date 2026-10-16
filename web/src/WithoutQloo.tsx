@@ -39,11 +39,13 @@ export function WithoutQloo({ labels: VERDICT, ours, theirs, second, city, infor
   const verdicts = (ours.shortlist_notes ?? []).map((n) => ({ ours: n, theirs: v1.get(key(n.title)), again: v2.get(key(n.title)) }));
   // A verdict difference counts only when both runs without Qloo agree with each other and not with Marquee.
   const differ = verdicts.filter((v) => v.theirs && v.theirs === v.again && v.theirs !== v.ours.verdict);
-  // A difference is Qloo's only when the verdict rests on its data: the title was scored, and it was not held for format,
-  // rights or a shared act (judgement). A title Qloo never scored is held by the evidence-first policy, not by data.
+  // What each difference rests on: a hold Qloo's data decides (taste, city, audience profile, popularity), a choice of
+  // which titles fill the slots (booked, or held for want of a slot), Marquee's own judgement, or no Qloo data at all.
   const scoredKeys = new Set(scored.map(key));
   const restsOn = (n: ShortlistNote) => !scoredKeys.has(key(n.title)) ? "No Qloo data"
-    : ["format", "judgement", "rights", "same_act"].includes(n.held_for ?? "") || !n.evidence.length ? "Judgement" : "Qloo data";
+    : ["taste", "local", "audience", "size"].includes(n.held_for ?? "") ? "Qloo data"
+    : ["format", "judgement", "rights", "same_act"].includes(n.held_for ?? "") ? "Judgement"
+    : "Slot choice";
   const fromQloo = differ.filter((v) => restsOn(v.ours) === "Qloo data").length;
   const unstable = verdicts.filter((v) => v.theirs && v.again && v.theirs !== v.again).length;
   const day = (iso: string) => new Date(`${iso}T12:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
@@ -84,7 +86,7 @@ export function WithoutQloo({ labels: VERDICT, ours, theirs, second, city, infor
       </div>
       {differ.length > 0 && (
         <p className="without-lead">
-          {fromQloo} of {differ.length} verdict difference{differ.length === 1 ? "" : "s"} rest{differ.length === 1 ? "s" : ""} on Qloo's data{fromQloo < differ.length ? "; the rest are Marquee's judgement or titles Qloo has no data on" : ""}.
+          {fromQloo} of {differ.length} verdict difference{differ.length === 1 ? "" : "s"} rest{differ.length === 1 ? "s" : ""} on Qloo's data{fromQloo < differ.length ? "; the rest are choices of which titles fill the slots, Marquee's judgement, or titles Qloo has no data on" : ""}.
         </p>
       )}
       {differ.length > 0 && (

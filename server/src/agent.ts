@@ -133,7 +133,7 @@ If the venue gives a shortlist (titles it can actually book this month), it is t
   Having a local signal is not by itself a reason to programme a title, and the push night should be a strong taste fit.
   Taste-discovery picks may fill remaining slots as source "taste", noted as not on the shortlist so availability needs checking.
 4. Optional, for at most two broader-appeal slots (a family matinee, a crowd night): qloo_recommend with signal_location and no taste signals, labelled as local crowd-pleasers.
-5. Co-promotion partners: qloo_recommend with target_type "place", signals = the resolved hits, filter_location = the venue's location as given (neighbourhoods work here; fall back to the city if it returns nothing), include_tags = one place-category tag id that suits a pairing (for example "urn:tag:category:place:bar" or "urn:tag:category:place:cafe"), limit 10. Keep only places whose address is in or next to the venue's neighbourhood or borough (results can spill into neighbouring areas; check the postcode), that look independent and fit specific events, each with one concrete idea. Never a competitor (${t.competitor}), a chain, a hotel or an institutional cafeteria. Give each partner's address as Qloo returned it.${t.soundtrack ? `
+5. Co-promotion partners: qloo_recommend with target_type "place", signals = the resolved hits, filter_location = the venue's location as given (neighbourhoods work here; fall back to the city if it returns nothing), include_tags = one place-category tag id that suits a pairing (for example "urn:tag:category:place:bar" or "urn:tag:category:place:cafe"), limit 10. Keep only places within walking distance of the venue's neighbourhood (results can spill across a whole borough or city; check the postcode, and keep fewer partners rather than distant ones), that look independent and fit specific events, each with one concrete idea. Never a competitor (${t.competitor}), a chain, a hotel or an institutional cafeteria. Give each partner's address as Qloo returned it.${t.soundtrack ? `
 6. Soundtrack: qloo_recommend with target_type "artist", signals = the resolved hits, limit 10: musicians with high affinity for this taste, for a pre-show playlist or a themed night. Put up to five in soundtrack.` : ""}
 7. Audience check: qloo_audience_demographics (entity_type "${t.type}") for the two lead picks. Values are skews against the general population (positive means over-represented), not shares of the crowd. When every profiled pick is negative in a band, the data cannot tell them apart there: say so instead of ranking them on it. Compare picks' audiences (best, strongest, better) only among picks you profiled, and give each pick one consistent pitch everywhere it appears. A profile with several bands at exactly 0 is sparse: say so rather than call its skew strong.
 8. Optional: ${t.trends ? `qloo_trends for the top picks over the six months to the date given as today, and ` : ""}qloo_where_popular for the lead pick within the venue's city (it often returns nothing).
@@ -151,11 +151,34 @@ Programme rules:
 ${sharedRules(kind)}
 - Feature only ${t.noun} that appear in tool results, named exactly as returned.
 - Every event's evidence cites call ids (q1, q2, ...) and states what that result shows. Distinguish a Qloo result from your own programming judgement.
-- State facts about a title (language, director, cast, setting, year, runtime) only when Qloo's data says them; otherwise leave them out.
+- State facts about a title (director, cast, setting, year, runtime) only when Qloo's data says them; otherwise leave them out. The exceptions are a film's spoken language and its distributor, which you may state from your own knowledge for the version and rights checks.
 - Confidence: high only for a pick near the top of both the taste and the local ranking; medium for a taste pick with no local signal, or a local pick with weak taste support; low for judgement-led slots.
 - audience_check: one plain sentence per lead pick naming its largest positive skews in words (for example "leans 35-44 and female"), then what that changes in the programme. Only a band with a positive skew is one a pick reaches: never suggest selling a pick to a band whose value is negative, and if the venue's own audience band is negative for a pick, say so plainly. If a pick does not fit the venue's audience, the programme must reflect it (its slot, format or how it is sold), and every event's why must agree with these values. Never push a night whose lead pick's profile is below average across the venue's own age bands.
 - In limits, say what the data does not establish (no ticket-sales data, aggregate affinity only, evidence for the city rather than the neighbourhood).${mock ? " The results are MOCK DATA, not Qloo results: say so first." : ""}`;
 };
+
+/**
+ * Which of these acts share members (a band and its leader's own project, a duo and its members)? A short question
+ * of its own, because inside a long plan the model often misses it, and code cannot know it. About $0.01.
+ */
+export async function sharedMembers(acts: string[], anthropic: Anthropic, signal?: AbortSignal): Promise<{ groups: string[][]; cost: number }> {
+  if (acts.length < 2) return { groups: [], cost: 0 };
+  const response = await anthropic.messages.create({
+    model: MODEL,
+    max_tokens: 1500,
+    tools: [{
+      name: "groups",
+      description: "Report groups of the given acts that share a member. Only groups you are confident of; an empty list if none.",
+      input_schema: { type: "object", required: ["groups"], properties: { groups: { type: "array", items: { type: "array", items: { type: "string" } } } } },
+    }],
+    messages: [{ role: "user", content: `Call the groups tool once. These are musicians and bands, named exactly as below. Which of them share a member (a band and its leader's or a member's own project, a duo and one of its members)? Use the names exactly as given.\n\n${acts.map((a) => `- ${a}`).join("\n")}` }],
+  }, { signal });
+  const u = response.usage;
+  const cost = (u.input_tokens * PRICE.input + u.output_tokens * PRICE.output) / 1e6;
+  const use = response.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
+  const groups = ((use?.input as { groups?: unknown } | undefined)?.groups ?? []) as unknown[];
+  return { groups: groups.filter((g): g is string[] => Array.isArray(g) && g.length > 1 && g.every((x) => typeof x === "string" && acts.includes(x))), cost };
+}
 
 /** Entity ids to names, from results ({entity_id, name}) and resolved inputs ({entityId, name}). */
 function collectIds(value: unknown, into: Map<string, string>) {
@@ -221,6 +244,7 @@ export async function runAgent(
   const callNames = new Map<string, Set<string>>();
   // Age skews per profiled title, and entity names by id so a profile (asked for by id) can be named.
   const ages = new Map<string, Record<string, number>>();
+  const profiled = new Set<string>();
   const idNames = new Map<string, string>();
   // The model sees short handles for entity ids, never the ids themselves.
   const handles = createHandles();
@@ -240,6 +264,7 @@ export async function runAgent(
     namesIn([envelope.interpretation, envelope.results, envelope.series], names);
     callNames.set(callId, namesIn([envelope.results, envelope.series]));
     collectIds([envelope.interpretation, envelope.results], idNames);
+    if (name === "qloo_audience_demographics" && typeof args.entity === "string") profiled.add(idNames.get(args.entity) ?? args.entity);
     if (name === "qloo_audience_demographics" && envelope.status === "ok") {
       for (const r of resultsOf(envelope) as { entity_id?: string; query?: { age?: Record<string, number> } }[]) {
         const n = r.entity_id && idNames.get(r.entity_id);
@@ -317,7 +342,19 @@ export async function runAgent(
     for (const use of uses) {
       if (use.name === "submit_programme") {
         const submitted = use.input as Programme;
-        const problems = checkProgramme(submitted, { month: venue.month, slots: venue.slots, names, callIds, shortlist: venue.shortlist, checkedLocally, discovered, localCalls, tasteScores, localScores, callNames, ages, audience: venue.audience, kind: venue.kind });
+        // Code cannot know who plays in which band, and the model rarely volunteers it mid-plan: ask it on its own.
+        let sameActs: string[][] = [];
+        if (venue.kind === "music_bar") {
+          const acts = [...new Set([...(venue.shortlist ?? []), ...submitted.events.flatMap((e) => e.featured)])];
+          try {
+            const asked = await sharedMembers(acts, anthropic, signal);
+            sameActs = asked.groups;
+            cost += asked.cost;
+          } catch (err) {
+            if (!signal?.aborted) console.error("Shared-members question failed:", (err as Error).message);
+          }
+        }
+        const problems = checkProgramme(submitted, { month: venue.month, slots: venue.slots, names, callIds, shortlist: venue.shortlist, checkedLocally, discovered, localCalls, tasteScores, localScores, callNames, ages, profiled, sameActs, audience: venue.audience, kind: venue.kind });
         // Up to two corrections; a third miss is published with its problems stated, rather than lost.
         if (problems.length && ++submissions < 3) {
           results.push({ type: "tool_result", tool_use_id: use.id, is_error: true,

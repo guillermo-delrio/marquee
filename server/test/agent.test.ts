@@ -13,7 +13,7 @@ const venue = { kind: "cinema" as const, location: "Lavapiés, Madrid", recentHi
 const programme: Programme = {
   headline: "A quiet November",
   audience_read: "Qloo ranks Paterson first here (q2).",
-  events: [{ title: "Paterson night", when: "Week 1, Thursday evening", date: "2026-11-05", format: "Screening", featured: ["Paterson"], why: "Ranked first (q2).",
+  events: [{ title: "Paterson night", when: "Week 1, Thursday evening", date: "2026-11-05", format: "Screening", featured: ["Paterson"], why: "Close to the regulars' taste (q2).",
     evidence: [{ call_id: "q1", claim: "Rank 1" }], confidence: "medium" }],
   limits: ["Mock data."],
   next_checks: ["Check rights."],
