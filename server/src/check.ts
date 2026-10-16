@@ -216,7 +216,8 @@ export function checkProgramme(
   }
   // The push is a strong taste fit: a bookable title in the bottom half of the taste ranking is not pushed, however it
   // plays in the city.
-  if (pushEvent && known.tasteScores?.size) {
+  // A bookshop may push its big retail day, whose table titles are a gift choice, not a taste claim.
+  if (pushEvent && known.tasteScores?.size && known.kind !== "bookshop") {
     const order = [...known.tasteScores.values()].map((t) => t.score).sort((a, b) => b - a);
     for (const f of pushEvent.featured) {
       const t = lookup(known.tasteScores, f);

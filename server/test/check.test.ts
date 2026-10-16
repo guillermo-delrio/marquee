@@ -333,5 +333,6 @@ describe("push night taste", () => {
     const tasteScores = new Map([["Paterson", { score: 0.9, callId: "q9" }], ["Alpha", { score: 0.85, callId: "q9" }], ["Beta", { score: 0.8, callId: "q9" }], ["Columbus", { score: 0.7, callId: "q9" }]]);
     expect(checkProgramme(p, { ...known, tasteScores }).join("\n")).toMatch(/"Columbus", in the bottom half of the taste ranking \(q9\)/);
     expect(checkProgramme({ ...p, push: "2026-11-06" }, { ...known, tasteScores }).join("\n")).not.toMatch(/bottom half/);
+    expect(checkProgramme(p, { ...known, tasteScores, kind: "bookshop" }).join("\n")).not.toMatch(/bottom half/);
   });
 });
