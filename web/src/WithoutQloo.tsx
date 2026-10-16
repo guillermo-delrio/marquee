@@ -68,7 +68,7 @@ export function WithoutQloo({ labels: VERDICT, ours, theirs, second, city, infor
         <ul className="informed">{informed.map((x) => <li key={x}>{x}</li>)}</ul>
       )}
       <p className="viz-sub">
-        The same model, with the same rules and no Qloo, planned this month twice.
+        The same model, with the same programme rules but no Qloo and none of Marquee's checks or instructions for reading Qloo's data, planned this month twice.
         {" "}It cannot see {[localSeen && `how titles land in ${city}`, profilesSeen && "who their audiences are", "which local places share the taste"].filter(Boolean).join(", ")}.
         {runOverlap !== null && <> Its two plans shared {runOverlap} of {runUnion} titles{unstable ? ` and disagreed with each other on ${unstable} verdict${unstable === 1 ? "" : "s"}` : ""}: that is how much plans differ by chance, so only differences both runs agree on are listed.</>}
       </p>

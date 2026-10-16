@@ -40,7 +40,7 @@ describe("shortlist checks", () => {
 
   it("accepts a verdict for every shortlisted title that matches the programme", () => {
     expect(checkProgramme(withNotes([
-      { title: "Paterson", verdict: "programmed", reason: "Ranks first for taste and here", evidence: ["q2"] },
+      { title: "Paterson", verdict: "programmed", reason: "A close fit for the regulars, booked for a Friday", evidence: ["q2"] },
       { title: "Old Joy", verdict: "not_found", reason: "Qloo did not resolve it", evidence: [] },
     ]), shortlisted)).toEqual([]);
   });
@@ -78,7 +78,7 @@ describe("verdict rules", () => {
   it("accepts featured for a title played but not booked", () => {
     expect(checkProgramme({ ...programme(two), shortlist_notes: [
       { title: "Paterson", verdict: "featured", reason: "A listening night: too big to book live.", evidence: [], held_for: "format" },
-      { title: "Old Joy", verdict: "reserve", reason: "In Marquee's judgement a weaker fit.", evidence: [], held_for: "judgement" },
+      { title: "Old Joy", verdict: "reserve", reason: "In Marquee's judgement it suits the regulars less well than the booked films.", evidence: [], held_for: "judgement" },
     ] }, shortlisted)).toEqual([]);
   });
 });
@@ -226,7 +226,7 @@ describe("round 7 checks", () => {
   const two = [event({ source: "shortlist" }), event({ featured: ["Columbus"], date: "2026-11-07", when: "Week 1, Saturday evening" })];
   const base = { ...known, shortlist: ["Paterson", "Old Joy"] };
   const notes = (held: Partial<ShortlistNote>) => [{ title: "Paterson", verdict: "programmed" as const, reason: "", evidence: [] },
-    { title: "Old Joy", verdict: "reserve" as const, reason: "A weaker fit.", evidence: [], ...held }];
+    { title: "Old Joy", verdict: "reserve" as const, reason: "Held this month.", evidence: [], ...held }];
   it("does not accept a tie on taste as a weaker taste fit", () => {
     const k = { ...base, tasteScores: new Map([["Paterson", { score: 0.786, callId: "q9" }], ["Old Joy", { score: 0.78, callId: "q9" }]]) };
     expect(checkProgramme({ ...programme(two), shortlist_notes: notes({ held_for: "taste" }) }, k).join("\n")).toMatch(/tied with booked "Paterson" on taste \(q9\)/);
@@ -270,5 +270,29 @@ describe("records nights", () => {
       shortlist_notes: [{ title: "Paterson", verdict: "programmed" as const, reason: "", evidence: [], same_act_as: [] }] }, { ...known, shortlist: ["Paterson"], kind: "music_bar" }).join("\n");
     expect(run(false)).toBe("");
     expect(run(true)).toMatch(/only appears on a records night/);
+  });
+});
+
+describe("round 8 checks", () => {
+  it("keeps ranks and comparisons out of verdict reasons", () => {
+    const p = { ...programme([event({ source: "shortlist" }), event({ featured: ["Columbus"], date: "2026-11-07", when: "Week 1, Saturday evening" })]),
+      shortlist_notes: [{ title: "Paterson", verdict: "programmed" as const, reason: "Top of the Madrid ranking.", evidence: [] }] };
+    expect(checkProgramme(p, { ...known, shortlist: ["Paterson"] }).join("\n")).toMatch(/the reason says "Top"/);
+  });
+  it("does not push a night whose audience leans away from the venue's ages", () => {
+    const p = { ...programme([event({ date: "2026-11-06" }), event({ featured: ["Columbus"], date: "2026-11-07", when: "Week 1, Saturday evening" })]), push: "2026-11-06" };
+    const k = { ...known, audience: "people 25-34", ages: new Map([["Paterson", { "25_to_29": 0.12, "30_to_34": -0.37 }]]) };
+    expect(checkProgramme(p, k).join("\n")).toMatch(/push night features "Paterson", whose audience profile is below average/);
+    expect(checkProgramme({ ...p, push: "2026-11-07" }, k).join("\n")).not.toMatch(/push night/);
+  });
+  it("spreads events across weekends", () => {
+    const three = [event({ date: "2026-11-06" }), event({ featured: ["Columbus"], date: "2026-11-07" }), event({ featured: ["Old Joy"], date: "2026-11-08" })];
+    const p = programme([...three, event({ featured: ["Alpha"], date: "2026-11-13" }), event({ featured: ["Beta"], date: "2026-11-20" })]);
+    const names = new Set(["Paterson", "Columbus", "Old Joy", "Alpha", "Beta"]);
+    expect(checkProgramme(p, { ...known, slots: 5, names }).join("\n")).toMatch(/weekend of 2026-11-06 has 3 events while the weekend of 2026-11-27 has none/);
+  });
+  it("finds counts with several words between number and noun", () => {
+    expect(checkProgramme({ ...programme([event(), event({ featured: ["Columbus"], date: "2026-11-07" })]), headline: "Four Friday live sets and one swap" }, known).join("\n"))
+      .toMatch(/headline states a count/);
   });
 });

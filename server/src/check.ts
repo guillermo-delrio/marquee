@@ -22,7 +22,9 @@ export function namesIn(value: unknown, into = new Set<string>()): Set<string> {
 }
 
 /** A reason that treats a title's absence from a ranking as evidence against it. */
-const COUNT = /\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\d+)\s+(?:[a-z-]+\s+)?(picks?|events?|nights?|evenings?|titles?|films?|books?|acts?|shows?|screenings?|sets?)\b/i;
+const COUNT = /\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\d+)\s+(?:[a-z-]+\s+){0,3}(picks?|events?|nights?|evenings?|titles?|films?|books?|acts?|shows?|screenings?|sets?|swaps?|readings?|clubs?|sessions?|tables?|matinees?|dates?|weekends?|fridays?|saturdays?)\b/i;
+/** Rank and comparison words: the page writes each title's standing from the data, so a verdict reason leaves them out. */
+const RANK_TALK = /\b(top|first|second|third|fourth|fifth|last|lowest|highest|best|strongest|weakest|above|below|ahead|behind|ties?|tied|near-tie|weaker|stronger|higher|lower|mid-table|middle|leads?|#\d+)\b/i;
 const RECORDS = /\b(listening|records?|vinyl|dj)\b/i;
 
 /** Qloo's age bands that overlap the ages in a venue's audience ("people 25-34" gives 25_to_29 and 30_to_34). */
@@ -165,6 +167,9 @@ export function checkProgramme(
           const onRecord = (e: (typeof nights)[number]) => e.on_record ?? RECORDS.test(e.format);
           if (nights.length && nights.every(onRecord)) problems.push(`"${title}" is marked programmed but only appears on a records night; use featured (played, not booked) or book it live.`);
         }
+        if (RANK_TALK.test(note.reason)) {
+          problems.push(`"${title}": the reason says "${note.reason.match(RANK_TALK)![0]}"; the page shows each title's standing from the data, so give the decision and its grounds without ranks or comparisons.`);
+        }
         const benched = note.verdict === "skip" || note.verdict === "reserve" || (note.verdict === "featured" && inProgramme);
         if (benched) {
           const problem = holdProblem(note, title);
@@ -190,6 +195,26 @@ export function checkProgramme(
   if (p.push && p.events.some((e) => [5, 6].includes(weekday(e.date))) && ![5, 6].includes(weekday(p.push))) {
     problems.push(`The push night ${p.push} is not a Friday or Saturday; push a weekend night.`);
   }
+  // The push night's lead pick must not be one whose profile leans away from the venue's own ages overall.
+  const pushEvent = p.push ? p.events.find((e) => e.date === p.push) : undefined;
+  if (pushEvent && known.ages && venueBands(known.audience).length) {
+    for (const f of pushEvent.featured) {
+      const a = lookup(known.ages, f);
+      if (a && fit(a) < 0) problems.push(`The push night features "${f}", whose audience profile is below average across the venue's ${known.audience} (${fit(a).toFixed(2)} in total); push a night whose audience fits, or one without a profile against it.`);
+    }
+  }
+  // Spread across weekends: no weekend left empty while another carries three events or more.
+  const weekendOf = (d: string) => { const t = new Date(`${d}T12:00:00Z`); const day = t.getUTCDay(); const fri = new Date(t); fri.setUTCDate(t.getUTCDate() - ((day + 2) % 7)); return fri.toISOString().slice(0, 10); };
+  const perWeekend = new Map<string, number>();
+  const [yy, mm] = known.month.split("-").map(Number);
+  for (let day = 1; day <= new Date(Date.UTC(yy, mm, 0)).getUTCDate(); day++) {
+    const d = `${known.month}-${String(day).padStart(2, "0")}`;
+    if ([5, 6].includes(weekday(d))) perWeekend.set(weekendOf(d), 0);
+  }
+  for (const e of p.events) if (e.date && [5, 6, 0].includes(weekday(e.date)) && perWeekend.has(weekendOf(e.date))) perWeekend.set(weekendOf(e.date), perWeekend.get(weekendOf(e.date))! + 1);
+  const empty = [...perWeekend].filter(([, n]) => n === 0).map(([k]) => k);
+  const crowded = [...perWeekend].filter(([, n]) => n >= 3).map(([k]) => k);
+  if (empty.length && crowded.length) problems.push(`The weekend of ${crowded[0]} has ${perWeekend.get(crowded[0])} events while the weekend of ${empty[0]} has none; spread them.`);
   // Weekends first: a second weeknight event while a Friday or Saturday of the month is still free.
   const used = new Set(p.events.map((e) => e.date));
   const [y, m] = known.month.split("-").map(Number);

@@ -98,3 +98,55 @@ export function scoreRows(raw: unknown): ScoreRow[] {
   const rows = itemsOf(raw).filter((i): i is Required<Pick<Item, "name" | "affinity">> & Item => typeof i.name === "string" && typeof i.affinity === "number");
   return rows.map((r, i) => ({ name: decodeEntities(r.name), score: r.affinity, tied: i > 0 && Math.abs(rows[i - 1].affinity - r.affinity) < 0.01 }));
 }
+
+export interface Standing {
+  call: string;
+  pos: number;
+  /** How many titles that call scored. */
+  of: number;
+  /** Within 0.01 of a neighbour: the order between them is not meaningful. */
+  tie: boolean;
+}
+
+/**
+ * A title's place in the last ranking of each kind that scored it: by taste (qloo_rank with no location) and in a place
+ * (with one). Written by code from the results, so the page never depends on the model to state a rank or a tie.
+ */
+export function standings(events: AgentEvent[], title: string): { taste: Standing | null; local: (Standing & { place: string }) | null; localTried: string | null } {
+  const results = new Map(events.filter((e): e is Result => e.type === "tool_result").map((r) => [r.call_id, r]));
+  const out: ReturnType<typeof standings> = { taste: null, local: null, localTried: null };
+  for (const c of events) {
+    if (c.type !== "tool_call" || c.name !== "qloo_rank") continue;
+    const r = results.get(c.call_id);
+    if (!r || r.status !== "ok") continue;
+    const rows = scoreRows(r.raw);
+    const asked = optionsOf(r.raw).some((o) => norm(o.name) === norm(title));
+    const i = rows.findIndex((x) => norm(x.name) === norm(title));
+    const place = c.args.signal_location ? String(c.args.signal_location) : null;
+    if (place && asked && rows.length) out.localTried = place;
+    if (i < 0) continue;
+    const tie = (i > 0 && rows[i].tied) || (i + 1 < rows.length && rows[i + 1].tied);
+    const s = { call: c.call_id, pos: i + 1, of: rows.length, tie };
+    if (place) out.local = { ...s, place };
+    else out.taste = s;
+  }
+  return out;
+}
+
+export interface Profile {
+  name: string;
+  call: string;
+  age: Record<string, number>;
+}
+
+/** Audience profiles (qloo_audience_demographics) by entity, with Qloo's age skews as returned. */
+export function profiles(events: AgentEvent[], names: Map<string, string>): Profile[] {
+  const out: Profile[] = [];
+  for (const e of events) {
+    if (e.type !== "tool_result" || e.name !== "qloo_audience_demographics" || e.status !== "ok") continue;
+    for (const r of itemsOf(e.raw) as { entity_id?: string; query?: { age?: Record<string, number> } }[]) {
+      if (r.entity_id && r.query?.age) out.push({ name: decodeEntities(names.get(r.entity_id) ?? r.entity_id), call: e.call_id, age: r.query.age });
+    }
+  }
+  return out;
+}

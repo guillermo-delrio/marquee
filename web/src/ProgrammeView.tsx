@@ -2,10 +2,12 @@ import { useState } from "react";
 
 import { dateFor, toIcs, toMarkdown } from "./calendar";
 import { Cite } from "./Cite";
-import { comparisons, scoreRows } from "./evidence";
+import { comparisons, profiles as ageProfiles, scoreRows, standings } from "./evidence";
+import { entityNames } from "./trailLabels";
 import { TasteVsPlace } from "./TasteVsPlace";
 import { featuredVerb, heldLabel, soundtrackTitle, verdictLabels } from "./labels";
 import { WithoutQloo } from "./WithoutQloo";
+import type { Profile, Standing } from "./evidence";
 import type { AgentEvent, Programme, ProgrammeEvent, ShortlistNote, VenueInput } from "./types";
 
 const SOURCE: Record<NonNullable<ProgrammeEvent["source"]>, string> = {
@@ -26,6 +28,47 @@ function download(name: string, type: string, body: string) {
 const fmt = new Intl.DateTimeFormat(undefined, { weekday: "short", day: "numeric", month: "short" });
 const hhmm = (d: Date) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 const CONFIDENCE = { high: "strong evidence", medium: "some evidence", low: "judgement call" } as const;
+
+/** A title's standing in each ranking, written by code from Qloo's results, ties included. */
+function Facts({ s }: { s: ReturnType<typeof standings> }) {
+  const one = (x: Standing) => <>{x.tie ? "≈" : ""}#{x.pos} of {x.of} <Cite text={x.call} /></>;
+  if (!s.taste && !s.local) return <span className="facts">Qloo scored it in no ranking.</span>;
+  return (
+    <span className="facts">
+      By taste {s.taste ? one(s.taste) : "not scored"}
+      {" · "}{s.local ? <>in {s.local.place} {one(s.local)}</> : s.localTried ? `not ranked in ${s.localTried}` : "no city ranking"}
+    </span>
+  );
+}
+
+const BANDS: [string, string, number, number][] = [["24_and_younger", "≤24", 0, 24], ["25_to_29", "25–29", 25, 29], ["30_to_34", "30–34", 30, 34],
+  ["35_to_44", "35–44", 35, 44], ["45_to_54", "45–54", 45, 54], ["55_and_older", "55+", 55, 120]];
+
+/** Qloo's age skews for each profiled pick, the venue's own bands marked: the data behind the audience advice. */
+function AgeTable({ rows, venueAudience }: { rows: Profile[]; venueAudience?: string }) {
+  if (!rows.length) return null;
+  const m = (venueAudience ?? "").match(/(\d{2})\s*(?:-|–|to)\s*(\d{2})/);
+  const mine = (lo: number, hi: number) => !!m && lo <= Number(m[2]) && hi >= Number(m[1]);
+  return (
+    <div className="age-wrap">
+      <table className="age-table">
+        <caption>Age skew against the general population (above 0: over-represented){m ? "; the venue's bands in bold" : ""}</caption>
+        <thead><tr><th scope="col">Pick</th>{BANDS.map(([k, label, lo, hi]) => <th key={k} scope="col" className={mine(lo, hi) ? "mine" : ""}>{label}</th>)}</tr></thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.call}>
+              <th scope="row">{r.name} <Cite text={r.call} /></th>
+              {BANDS.map(([k, , lo, hi]) => {
+                const v = r.age[k];
+                return <td key={k} className={`${mine(lo, hi) ? "mine " : ""}${v > 0 ? "pos" : v < 0 ? "neg" : ""}`}>{v === undefined ? "–" : `${v > 0 ? "+" : ""}${v.toFixed(2)}`}</td>;
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 export function ProgrammeView({ programme, venue, events }: { programme: Programme; venue: VenueInput; events: AgentEvent[] }) {
   const evidence = comparisons(events, { featured: programme.events.flatMap((e) => e.featured) });
@@ -82,11 +125,13 @@ export function ProgrammeView({ programme, venue, events }: { programme: Program
       {programme.shortlist_notes?.length ? (
         <section className="panel verdicts">
           <h3>Your shortlist</h3>
+          <p className="viz-sub">Under each verdict, where the title stands in Qloo's rankings; ≈ marks a score within 0.01 of a neighbour, a tie.</p>
           <ul>
             {programme.shortlist_notes.map((n) => (
               <li key={n.title}>
                 <span className={`verdict ${n.verdict}`}>{VERDICT[n.verdict]}{n.held_for && n.verdict !== "programmed" && <span className="held">{heldLabel(n.held_for, venue.location.split(",").pop()!.trim())}</span>}</span>
-                <span><strong>{n.title}</strong> — <Cite text={n.reason} />{n.evidence.length ? <> <Cite text={n.evidence.join(", ")} /></> : null}</span>
+                <span><strong>{n.title}</strong> — <Cite text={n.reason} />{n.evidence.length ? <> <Cite text={n.evidence.join(", ")} /></> : null}
+                  <Facts s={standings(events, n.title)} /></span>
               </li>
             ))}
           </ul>
@@ -146,6 +191,7 @@ export function ProgrammeView({ programme, venue, events }: { programme: Program
             <section className="panel">
               <h3>Audience check</h3>
               <p className="viz-sub">Who the lead picks' audiences lean towards, from Qloo's audience profiles.</p>
+              <AgeTable rows={ageProfiles(events, entityNames(events))} venueAudience={venue.audience} />
               <p><Cite text={programme.audience_check} /></p>
             </section>
           ) : null}

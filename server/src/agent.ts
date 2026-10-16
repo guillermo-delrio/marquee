@@ -94,7 +94,7 @@ const PROGRAMME_SCHEMA = {
         properties: {
           title: { type: "string", description: "As the venue wrote it." },
           verdict: { type: "string", enum: ["programmed", "featured", "reserve", "skip", "not_found"] },
-          reason: { type: "string", description: "One sentence grounded in the cited calls." },
+          reason: { type: "string", description: "One sentence: the decision and its grounds (the slot, the format, the audience, the act). No ranks, ties or comparisons: the page shows each title's standing from the data." },
           evidence: { type: "array", items: { type: "string" }, description: "Call ids." },
           same_act_as: {
             type: "array", items: { type: "string" },
@@ -153,7 +153,7 @@ ${sharedRules(kind)}
 - Every event's evidence cites call ids (q1, q2, ...) and states what that result shows. Distinguish a Qloo result from your own programming judgement.
 - State facts about a title (language, director, cast, setting, year, runtime) only when Qloo's data says them; otherwise leave them out.
 - Confidence: high only for a pick near the top of both the taste and the local ranking; medium for a taste pick with no local signal, or a local pick with weak taste support; low for judgement-led slots.
-- audience_check: one plain sentence per lead pick naming its largest positive skews in words (for example "leans 35-44 and female"), then what that changes in the programme. Only a band with a positive skew is one a pick reaches: never suggest selling a pick to a band whose value is negative, and if the venue's own audience band is negative for a pick, say so plainly. If a pick does not fit the venue's audience, the programme must reflect it (its slot, format or how it is sold), and every event's why must agree with these values.
+- audience_check: one plain sentence per lead pick naming its largest positive skews in words (for example "leans 35-44 and female"), then what that changes in the programme. Only a band with a positive skew is one a pick reaches: never suggest selling a pick to a band whose value is negative, and if the venue's own audience band is negative for a pick, say so plainly. If a pick does not fit the venue's audience, the programme must reflect it (its slot, format or how it is sold), and every event's why must agree with these values. Never push a night whose lead pick's profile is below average across the venue's own age bands.
 - In limits, say what the data does not establish (no ticket-sales data, aggregate affinity only, evidence for the city rather than the neighbourhood).${mock ? " The results are MOCK DATA, not Qloo results: say so first." : ""}`;
 };
 
