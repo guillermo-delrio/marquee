@@ -103,6 +103,9 @@ export function ProgrammeView({ programme, venue, events, trail }: { programme: 
   const shown = (f: string) => (f === f.toLowerCase() ? names.get(f.normalize("NFKC").replace(/[^\p{L}\p{N}]+/gu, " ").trim()) ?? f : f);
   // An event title that repeats a pick in lower case ("Dehd with good looks") gets the pick in Qloo's spelling.
   const canonical = (f: string) => names.get(f.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim()) ?? f;
+  // A bookable title as the venue typed it ("Squirrel Flower"), not as Qloo stores it ("squirrel flower").
+  const typed = new Map((venue.shortlist ?? []).map((t) => [t.toLowerCase(), t]));
+  const asTyped = (n: string) => typed.get(n.toLowerCase()) ?? n;
   const titleOf = (e: ProgrammeEvent) => e.featured.reduce((t, f) => {
     const lower = f.toLowerCase();
     return t.includes(lower) && !t.includes(canonical(f)) ? t.split(lower).join(canonical(f)) : t;
@@ -223,7 +226,7 @@ export function ProgrammeView({ programme, venue, events, trail }: { programme: 
       {tab === "compare" && baseline && <WithoutQloo labels={VERDICT} ours={programme} theirs={baseline} second={baselineEvent?.second} city={evidence[0]?.location ?? venue.location}
         informed={informed} localSeen={evidence.some((c) => c.rows.some((r) => r.local !== null))} profilesSeen={profiles > 0} scored={scored} />}
       {tab === "audience" && <>
-      {evidence.map((c) => <TasteVsPlace key={c.localCall} c={c} />)}
+      {evidence.map((c) => <TasteVsPlace key={c.localCall} c={{ ...c, rows: c.rows.map((r) => ({ ...r, name: asTyped(r.name) })) }} />)}
       {(programme.partners?.length || programme.audience_check || soundtrack?.length) ? (
         <div className="two">
           {programme.partners?.length ? (
