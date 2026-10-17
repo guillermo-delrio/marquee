@@ -21,6 +21,13 @@ const WEB = path.join(ROOT, "web", "dist");
 const DAILY_RUN_CAP = Number(process.env.MARQUEE_DAILY_RUNS ?? 25);
 // Live runs a day per visitor, so one visitor cannot use up the day for everyone else.
 const RUNS_PER_CLIENT = Number(process.env.MARQUEE_RUNS_PER_VISITOR ?? 3);
+// Total Anthropic spend on live runs, in dollars, kept across days and restarts: a hard stop under the account's
+// credit, so a busy fortnight cannot use up credit other work needs. Unset means no total cap.
+const SPEND_CAP_USD = process.env.MARQUEE_SPEND_CAP_USD ? Number(process.env.MARQUEE_SPEND_CAP_USD) : undefined;
+// The day the spend cap starts counting (YYYY-MM-DD, UTC), e.g. the start of a month's API credit; before it, no total cap.
+const SPEND_FROM = process.env.MARQUEE_SPEND_FROM;
+// What a run may cost before it is settled: the $0.50 planning stop plus the two plans without Qloo.
+const RUN_RESERVE_USD = 0.75;
 // Live runs at once; more overlapping runs hit Qloo's rate limit. Beyond MAX_WAITING queued, new runs are refused.
 const CONCURRENT_RUNS = 2;
 const MAX_WAITING = 2;
@@ -72,16 +79,21 @@ const loadSamples = (): VenueInput[] => {
  * One live plan; a finished programme is cached so the same request never costs twice. `signal` stops the run when
  * the visitor leaves. Error details go to the server log, never to the browser.
  */
-async function planAndCache(venue: VenueInput, emit: (e: AgentEvent) => void, signal?: AbortSignal): Promise<void> {
+async function planAndCache(venue: VenueInput, emit: (e: AgentEvent) => void, signal?: AbortSignal,
+  onCost: (usd: number) => void = () => {}): Promise<void> {
   const log: AgentEvent[] = [];
   let qloo: Awaited<ReturnType<typeof connectQloo>> | null = null;
   try {
     qloo = await connectQloo();
-    const programme = await runAgent(venue, qloo, (e) => { log.push(e); emit(e); }, undefined, signal);
+    const programme = await runAgent(venue, qloo, (e) => {
+      log.push(e);
+      if (e.type === "done") onCost(e.cost_usd);
+      emit(e);
+    }, undefined, signal);
     if (programme) fs.writeFileSync(cachePath(venue), JSON.stringify(log));
   } catch (err) {
     if (!signal?.aborted) console.error("Run failed:", err);
-    emit({ type: "error", message: "The plan could not be finished. Please try again in a minute." });
+    emit({ type: "error", message: "The plan could not be finished. The sample venues still replay in full; try a live plan again later." });
   } finally {
     await qloo?.close();
   }
@@ -108,29 +120,50 @@ export async function warmSamples(
 }
 
 /**
- * Daily live-run allowance, in total and per visitor. Returns null when a run may start, else the reason it may not.
- * With `file`, the count survives a process restart (a host that wipes its disk still resets it).
+ * Daily live-run allowance, in total and per visitor, and an optional total spend cap that never resets. Returns null
+ * when a run may start, else the reason it may not. A run reserves `reserveUsd` of the cap when it starts and
+ * `settle` swaps that for its real cost; a run that dies before reporting its cost keeps the reservation.
+ * With `file`, the counts survive a process restart (a host that wipes its disk still resets them).
  */
-export function createBudget(o: { daily: number; perClient: number; today?: () => string; file?: string }) {
+export function createBudget(o: {
+  daily: number; perClient: number; today?: () => string; file?: string; spendCapUsd?: number; reserveUsd?: number;
+  spendFrom?: string;
+}) {
   const today = o.today ?? (() => new Date().toISOString().slice(0, 10));
-  type State = { day: string; total: number; clients: Record<string, number> };
+  const reserve = o.reserveUsd ?? 0.75;
+  type State = { day: string; total: number; clients: Record<string, number>; spentUsd?: number; spendFrom?: string };
   let state: State = { day: "", total: 0, clients: {} };
   try {
     if (o.file && fs.existsSync(o.file)) state = JSON.parse(fs.readFileSync(o.file, "utf8")) as State;
   } catch { /* a corrupt file starts the day afresh */ }
+  const save = () => { if (o.file) fs.writeFileSync(o.file, JSON.stringify(state)); };
   return {
     take(client: string): string | null {
       const d = today();
-      if (state.day !== d) state = { day: d, total: 0, clients: {} };
+      if (state.day !== d) state = { day: d, total: 0, clients: {}, spentUsd: state.spentUsd, spendFrom: state.spendFrom };
+      // The cap counts from its start day: spend before it is not counted, and the count starts at zero that day.
+      const capped = o.spendCapUsd !== undefined && (!o.spendFrom || d >= o.spendFrom);
+      if (capped && state.spendFrom !== o.spendFrom) { state.spentUsd = 0; state.spendFrom = o.spendFrom; }
+      if (capped && (state.spentUsd ?? 0) + reserve > o.spendCapUsd!) {
+        return "Marquee's live plans are used up. The sample venues still replay in full.";
+      }
       if (state.total >= o.daily) return "Today's live runs are used up. Explore the sample venues, or try again tomorrow.";
       if ((state.clients[client] ?? 0) >= o.perClient) {
         return `You have used your ${o.perClient} live plans for today. Explore the sample venues, or try again tomorrow.`;
       }
       state.total++;
       state.clients[client] = (state.clients[client] ?? 0) + 1;
-      if (o.file) fs.writeFileSync(o.file, JSON.stringify(state));
+      state.spentUsd = (state.spentUsd ?? 0) + reserve;
+      save();
       return null;
     },
+    /** Replaces a started run's reservation with what it really cost. */
+    settle(costUsd: number) {
+      state.spentUsd = Math.max(0, (state.spentUsd ?? 0) - reserve + costUsd);
+      save();
+      console.log(`Live spend so far: $${state.spentUsd.toFixed(2)}${o.spendCapUsd !== undefined ? ` of $${o.spendCapUsd}` : ""}`);
+    },
+    spentUsd: () => state.spentUsd ?? 0,
   };
 }
 
@@ -179,7 +212,10 @@ export function createRuns() {
 export function createApp() {
   const limit = createLimiter(CONCURRENT_RUNS);
   const runs = createRuns();
-  const budget = createBudget({ daily: DAILY_RUN_CAP, perClient: RUNS_PER_CLIENT, file: path.join(OUT, "budget.json") });
+  const budget = createBudget({
+    daily: DAILY_RUN_CAP, perClient: RUNS_PER_CLIENT, file: path.join(OUT, "budget.json"),
+    spendCapUsd: SPEND_CAP_USD, reserveUsd: RUN_RESERVE_USD, spendFrom: SPEND_FROM,
+  });
   const app = express();
   app.disable("x-powered-by");
   // Behind the host's reverse proxy, req.ip is the visitor's address only when the first proxy hop is trusted.
@@ -238,7 +274,7 @@ export function createApp() {
     });
     const heartbeat = setInterval(() => res.write(": ping\n\n"), HEARTBEAT_MS);
     try {
-      await limit(() => (abort.signal.aborted ? Promise.resolve() : planAndCache(venue, send, abort.signal)),
+      await limit(() => (abort.signal.aborted ? Promise.resolve() : planAndCache(venue, send, abort.signal, (usd) => budget.settle(usd))),
         () => send({ type: "status", message: "Another plan is running; yours starts as soon as it finishes." }));
     } finally {
       runs.finish(runId);
@@ -255,7 +291,7 @@ export function createApp() {
 
   if (fs.existsSync(WEB)) app.use(express.static(WEB));
   if (process.env.MARQUEE_WARM_SAMPLES === "1") {
-    void warmSamples(loadSamples(), (v) => fs.existsSync(cachePath(v)), () => !budget.take("warm-up"), (v) => limit(() => planAndCache(v, () => {})))
+    void warmSamples(loadSamples(), (v) => fs.existsSync(cachePath(v)), () => !budget.take("warm-up"), (v) => limit(() => planAndCache(v, () => {}, undefined, (usd) => budget.settle(usd))))
       .then((n) => console.log(`Warmed ${n} sample venue(s)`));
   }
   return app;

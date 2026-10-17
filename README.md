@@ -98,7 +98,7 @@ docker build -t marquee . && docker run --env-file .env -p 7860:7860 marquee
 
 Without `QLOO_API_KEY` (or with `QLOO_MOCK=1`) the app runs on clearly labelled mock data, so the interface can be tried without a Qloo key. Tests: `npm test` in `server/` and in `web/`; with the server running, `npm run check-phone` in `web/` checks the phone layout.
 
-Keys stay on the server: the Qloo key reaches only the `qloo mcp` child process, and neither key is sent to the browser, the model or a log. Daily caps bound what a public demo can spend: `MARQUEE_DAILY_RUNS` (default 25) in total and `MARQUEE_RUNS_PER_VISITOR` (default 3) per visitor. A run stops when its visitor leaves, and its planning stops once the model cost passes $0.50 (the two control runs, about $0.10 more, follow a finished plan); and identical requests are served from a cache.
+Keys stay on the server: the Qloo key reaches only the `qloo mcp` child process, and neither key is sent to the browser, the model or a log. Daily caps bound what a public demo can spend: `MARQUEE_DAILY_RUNS` (default 25) in total and `MARQUEE_RUNS_PER_VISITOR` (default 3) per visitor, and an optional total `MARQUEE_SPEND_CAP_USD` that counts real model cost from `MARQUEE_SPEND_FROM` (a date) and survives restarts. A run stops when its visitor leaves, and its planning stops once the model cost passes $0.50 (the two control runs, about $0.10 more, follow a finished plan); and identical requests are served from a cache.
 
 ## Limits
 

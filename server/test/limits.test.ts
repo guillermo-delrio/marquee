@@ -72,6 +72,37 @@ describe("createBudget", () => {
     expect(createBudget({ daily: 2, perClient: 2, today, file }).take("c")).toMatch(/used up/);
     fs.rmSync(file, { force: true });
   });
+  it("stops live runs at the spend cap, across days, counting each run's real cost once settled", () => {
+    let day = "2026-11-02";
+    const budget = createBudget({ daily: 10, perClient: 10, today: () => day, spendCapUsd: 1.9, reserveUsd: 0.75 });
+    expect(budget.take("a")).toBeNull();
+    budget.settle(0.6);
+    expect(budget.take("a")).toBeNull();
+    budget.settle(0.6);
+    day = "2026-11-03";
+    // $1.20 spent: a third run would reserve $0.75 and could pass $1.90, so it is refused, and stays refused.
+    expect(budget.take("b")).toMatch(/live plans are used up/);
+    expect(budget.spentUsd()).toBeCloseTo(1.2);
+  });
+  it("starts counting on its start day, from zero", () => {
+    let day = "2026-10-30";
+    const budget = createBudget({ daily: 10, perClient: 10, today: () => day, spendCapUsd: 1, reserveUsd: 0.75, spendFrom: "2026-11-01" });
+    expect(budget.take("a")).toBeNull();
+    budget.settle(0.6);
+    expect(budget.take("b")).toBeNull(); // before the start day: no total cap
+    budget.settle(0.6);
+    day = "2026-11-01";
+    expect(budget.take("c")).toBeNull(); // October's spend does not count
+    budget.settle(0.6);
+    expect(budget.spentUsd()).toBeCloseTo(0.6);
+    expect(budget.take("d")).toMatch(/live plans are used up/);
+  });
+  it("keeps a run's reservation when it dies before reporting its cost", () => {
+    const budget = createBudget({ daily: 10, perClient: 10, today: () => "2026-11-02", spendCapUsd: 1, reserveUsd: 0.75 });
+    expect(budget.take("a")).toBeNull();
+    expect(budget.take("b")).toMatch(/used up/);
+    expect(budget.spentUsd()).toBeCloseTo(0.75);
+  });
 });
 
 describe("createLimiter queue", () => {
